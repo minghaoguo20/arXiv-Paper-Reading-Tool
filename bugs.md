@@ -54,6 +54,22 @@
 
 ---
 
+## 新功能
+
+### arXiv 自动下载 ✅
+**功能**: 支持直接从 arXiv 下载论文源文件
+**输入格式**:
+- `2307.16789` - arXiv ID
+- `2307.16789v2` - 带版本号的 arXiv ID
+- `https://arxiv.org/abs/2307.16789` - abs 页面 URL
+- `https://arxiv.org/pdf/2307.16789` - pdf 链接
+- `https://arxiv.org/src/2307.16789` - 源文件链接
+- `https://arxiv.org/html/2307.16789` - html 页面
+
+**实现**: 从 `https://arxiv.org/src/{arxiv_id}` 下载 .tar.gz，保存到 `tex/arXiv-{id}.tar.gz`
+
+---
+
 ## 待观察的潜在问题
 
 - 非 UTF-8 编码的 .tex 文件
