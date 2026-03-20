@@ -39,8 +39,6 @@ export API_URL="https://your-api-endpoint/v1/chat/completions"
 ## 使用方法
 
 ```bash
-cd /Users/minghao/Desktop/translation
-
 # arXiv ID（自动下载最新版本）
 python translate.py --input 2307.16789
 

@@ -28,13 +28,15 @@ Environment:
     ONE_API - API key for bltcy.ai (required unless --debug)
 """
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field, field
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import draccus
@@ -50,6 +52,11 @@ class Config:
     input: str = ""
     # Translation model (use "debug" for mock translation without API)
     model: str = "gpt-5-nano"
+    # Maximum concurrent API calls
+    max_workers: int = 10
+    # Continue from previous translation (reuse cached translations)
+    # Use "true"/"false" string for draccus compatibility
+    resume: str = "false"
 
     _instance: "Config" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
@@ -59,6 +66,98 @@ class Config:
         if self.model in ("x", "debug", "none"):
             self.model = "none"
             self.debug_mode = True
+
+
+@dataclass
+class TranslationTask:
+    """A paragraph to be translated."""
+
+    index: int  # Position in result_parts for insertion
+    clean_text: str  # Cleaned text for translation API
+
+
+def get_paragraph_hash(text: str) -> str:
+    """Generate short hash for paragraph identification."""
+    return hashlib.md5(text.encode()).hexdigest()[:12]
+
+
+def get_cache_dir(output_dir: Path) -> Path:
+    """Get translation cache directory."""
+    cache_dir = output_dir / ".translations"
+    cache_dir.mkdir(exist_ok=True)
+    return cache_dir
+
+
+def get_cached_translation(output_dir: Path, text_hash: str) -> str | None:
+    """Load cached translation if exists."""
+    cache_file = get_cache_dir(output_dir) / f"{text_hash}.txt"
+    if cache_file.exists():
+        return cache_file.read_text(encoding="utf-8")
+    return None
+
+
+def save_cached_translation(output_dir: Path, text_hash: str, translation: str) -> None:
+    """Save translation to cache (atomic per paragraph)."""
+    cache_file = get_cache_dir(output_dir) / f"{text_hash}.txt"
+    cache_file.write_text(translation, encoding="utf-8")
+
+
+def batch_translate(
+    tasks: list[TranslationTask],
+    output_dir: Path | None = None,
+    max_workers: int = 10,
+) -> dict[int, str]:
+    """Translate multiple paragraphs concurrently with caching support."""
+    if not tasks:
+        return {}
+
+    cfg = Config._instance
+    results = {}
+    pending_tasks = []
+
+    # Check cache for each task (if output_dir provided)
+    if output_dir:
+        for task in tasks:
+            h = get_paragraph_hash(task.clean_text)
+            cached = get_cached_translation(output_dir, h)
+            if cached is not None:
+                results[task.index] = cached
+            else:
+                pending_tasks.append((task, h))
+
+        if results:
+            print(f"  Cached: {len(results)}, Pending: {len(pending_tasks)}")
+    else:
+        pending_tasks = [(t, get_paragraph_hash(t.clean_text)) for t in tasks]
+
+    if not pending_tasks:
+        return results
+
+    # Debug mode: sequential mock translation
+    if cfg and cfg.debug_mode:
+        for task, h in tqdm(pending_tasks, desc="Translating (debug)"):
+            translation = translate(task.clean_text)
+            results[task.index] = translation
+            if output_dir and translation:
+                save_cached_translation(output_dir, h, translation)
+        return results
+
+    # Translate pending paragraphs concurrently
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(translate, t.clean_text): (t, h) for t, h in pending_tasks}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Translating"):
+            task, h = futures[future]
+            try:
+                translation = future.result()
+                results[task.index] = translation
+                # Save immediately after each translation (atomic)
+                if output_dir and translation:
+                    save_cached_translation(output_dir, h, translation)
+            except Exception as e:
+                print(f"  Translation failed: {e}")
+                results[task.index] = ""
+
+    return results
 
 
 def translate(text: str, target_lang: str = "Chinese", max_retries: int = 3) -> str:
@@ -263,9 +362,18 @@ def translate_caption_line(line: str) -> str:
     return line + "\n    \\trans{" + escaped + "}"
 
 
-def translate_section_file(content: str, is_main_file: bool = False) -> str:
-    """Translate a section file, adding Chinese translation after each paragraph."""
-    result_lines = []
+def translate_section_file(
+    content: str, is_main_file: bool = False, output_dir: Path | None = None
+) -> str:
+    """Translate a section file, adding Chinese translation after each paragraph.
+
+    Uses two-pass approach:
+    1. Parse file, collect paragraphs to translate, insert placeholders
+    2. Batch translate all paragraphs concurrently
+    3. Replace placeholders with translations
+    """
+    result_parts: list[str | TranslationTask] = []  # Mixed list of strings and tasks
+    tasks: list[TranslationTask] = []
     lines = content.split("\n")
 
     # Track environments - separate caption-able envs from others
@@ -285,8 +393,11 @@ def translate_section_file(content: str, is_main_file: bool = False) -> str:
     all_envs = caption_envs + skip_envs
     env_depth = {env: 0 for env in all_envs}
 
-    current_para = []
+    current_para: list[str] = []
     in_document = not is_main_file  # If main file, wait for \begin{document}
+
+    # Caption tasks for concurrent translation
+    caption_tasks: list[tuple[int, str, TranslationTask]] = []  # (index, original_line, task)
 
     def in_any_skip_env():
         return any(env_depth[env] > 0 for env in all_envs)
@@ -295,43 +406,43 @@ def translate_section_file(content: str, is_main_file: bool = False) -> str:
         return any(env_depth[env] > 0 for env in caption_envs)
 
     def flush_paragraph():
-        """Process accumulated paragraph."""
+        """Process accumulated paragraph - collect task instead of translating."""
         nonlocal current_para
         if not current_para:
             return
 
         para_text = "\n".join(current_para)
-        result_lines.extend(current_para)
+        result_parts.extend(current_para)
 
         # Check if paragraph should be translated
         clean_para = clean_for_translation(para_text)
         if is_translatable_paragraph(clean_para):
-            translated = translate(clean_para)
-            escaped = escape_for_latex(translated)
-            # Add translation as a new paragraph in gray
-            result_lines.append("")
-            result_lines.append(r"\trans{" + escaped + "}")
-            result_lines.append("")
+            # Create task with placeholder
+            task = TranslationTask(index=len(result_parts), clean_text=clean_para)
+            tasks.append(task)
+            result_parts.append(task)  # Placeholder for translation
+            result_parts.append("")  # Empty line after translation
 
         current_para = []
 
+    # === Pass 1: Parse and collect translation tasks ===
     for line in lines:
         stripped = line.strip()
 
         # Track \begin{document} and \end{document}
         if r"\begin{document}" in stripped:
             in_document = True
-            result_lines.append(line)
+            result_parts.append(line)
             continue
         if r"\end{document}" in stripped:
             flush_paragraph()
             in_document = False
-            result_lines.append(line)
+            result_parts.append(line)
             continue
 
         # If not in document body (preamble), just copy line
         if not in_document:
-            result_lines.append(line)
+            result_parts.append(line)
             continue
 
         # Track environment depth
@@ -344,29 +455,36 @@ def translate_section_file(content: str, is_main_file: bool = False) -> str:
         # If in skip environment, handle specially
         if in_any_skip_env():
             flush_paragraph()
-            # Translate captions in figure/table environments
+            # Collect caption for translation
             if in_caption_env() and "\\caption{" in line:
-                result_lines.append(translate_caption_line(line))
-            else:
-                result_lines.append(line)
+                caption_content = extract_caption_content(line)
+                if caption_content and len(caption_content) >= 10:
+                    clean_caption = clean_for_translation(caption_content)
+                    if len(clean_caption) >= 10:
+                        task = TranslationTask(index=len(result_parts), clean_text=clean_caption)
+                        tasks.append(task)
+                        caption_tasks.append((len(result_parts), line, task))
+                        result_parts.append(task)  # Placeholder
+                        continue
+            result_parts.append(line)
             continue
 
         # Check for section headers
         if re.match(r"\\(section|subsection|subsubsection)\{", stripped):
             flush_paragraph()
-            result_lines.append(line)
+            result_parts.append(line)
             continue
 
         # Empty line = paragraph break
         if not stripped:
             flush_paragraph()
-            result_lines.append(line)
+            result_parts.append(line)
             continue
 
         # Comment line
         if stripped.startswith("%"):
             flush_paragraph()
-            result_lines.append(line)
+            result_parts.append(line)
             continue
 
         # Accumulate paragraph
@@ -374,7 +492,36 @@ def translate_section_file(content: str, is_main_file: bool = False) -> str:
 
     flush_paragraph()
 
-    return "\n".join(result_lines)
+    # === Pass 2: Batch translate all tasks concurrently ===
+    cfg = Config._instance
+    max_workers = cfg.max_workers if cfg else 10
+    translations = batch_translate(tasks, output_dir, max_workers)
+
+    # === Pass 3: Assemble final result ===
+    # Build set of caption task indices for special handling
+    caption_task_map = {t.index: (orig_line, t) for _, orig_line, t in caption_tasks}
+
+    final_parts: list[str] = []
+    for part in result_parts:
+        if isinstance(part, TranslationTask):
+            translated = translations.get(part.index, "")
+            if part.index in caption_task_map:
+                # Caption: output original line + translation
+                orig_line, _ = caption_task_map[part.index]
+                final_parts.append(orig_line)
+                if translated:
+                    escaped = escape_for_latex(translated)
+                    final_parts.append("    \\trans{" + escaped + "}")
+            else:
+                # Regular paragraph translation
+                if translated:
+                    escaped = escape_for_latex(translated)
+                    final_parts.append("")
+                    final_parts.append(r"\trans{" + escaped + "}")
+        else:
+            final_parts.append(part)
+
+    return "\n".join(final_parts)
 
 
 def fix_package_conflicts(output_dir: Path) -> None:
@@ -450,14 +597,25 @@ def fix_package_conflicts(output_dir: Path) -> None:
 
 def process_paper(paper_dir: Path) -> None:
     """Process a paper directory and generate bilingual PDF."""
+    cfg = Config._instance
     print(f"Processing: {paper_dir.name}")
 
     # Create output directory with copy of paper
     output_dir = paper_dir.parent / f"{paper_dir.name}_bilingual"
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    shutil.copytree(paper_dir, output_dir)
-    print(f"Copied to: {output_dir}")
+
+    if cfg and cfg.resume.lower() in ("true", "1", "yes") and output_dir.exists():
+        # Resume mode: keep existing output, reuse cache
+        print(f"Resuming translation in {output_dir}")
+        cache_dir = output_dir / ".translations"
+        if cache_dir.exists():
+            cached_count = len(list(cache_dir.glob("*.txt")))
+            print(f"  Found {cached_count} cached translations")
+    else:
+        # Fresh start: remove old and copy new
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        shutil.copytree(paper_dir, output_dir)
+        print(f"Copied to: {output_dir}")
 
     # Fix common package conflicts
     print("Checking for package conflicts...")
@@ -563,17 +721,17 @@ def process_paper(paper_dir: Path) -> None:
     # Always translate main file (document body)
     print(f"Translating main file: {main_tex.name}")
     content = main_tex.read_text(encoding="utf-8", errors="replace")
-    translated_content = translate_section_file(content, is_main_file=True)
+    translated_content = translate_section_file(content, is_main_file=True, output_dir=output_dir)
     main_tex.write_text(translated_content, encoding="utf-8")
 
     # Also translate included files
     if included_files:
         print(f"Translating {len(included_files)} included files")
-        for inc_file in tqdm(included_files, desc="Translating"):
+        for inc_file in included_files:
             rel_path = inc_file.relative_to(output_dir)
             print(f"  {rel_path}")
             content = inc_file.read_text(encoding="utf-8", errors="replace")
-            translated_content = translate_section_file(content)
+            translated_content = translate_section_file(content, output_dir=output_dir)
             inc_file.write_text(translated_content, encoding="utf-8")
 
     # Compile with tectonic
@@ -793,6 +951,12 @@ LaTeX Paper Translator - Common Commands:
 
   # Use different model
   python translate.py --input 2307.16789 --model gpt-4.1-mini
+
+  # Resume interrupted translation (reuse cached translations)
+  python translate.py --input 2307.16789 --resume true
+
+  # Adjust concurrency (default: 10)
+  python translate.py --input 2307.16789 --max_workers 20
 
 Environment:
   ONE_API    API key for bltcy.ai (required unless --model x/debug/none)
