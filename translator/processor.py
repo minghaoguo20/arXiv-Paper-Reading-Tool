@@ -1,0 +1,185 @@
+"""Paper processing and PDF generation."""
+
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from translator.latex import add_cjk_support, fix_package_conflicts, translate_section_file
+
+if TYPE_CHECKING:
+    from translator.cli import Config
+
+
+def get_config() -> "Config | None":
+    """Get the current Config instance."""
+    from translator.cli import Config
+
+    return Config._instance
+
+
+def is_preamble_file(filepath: Path) -> bool:
+    """Check if a file is a preamble/config file (should not be translated)."""
+    name = filepath.stem.lower()
+    # Skip by filename
+    if any(
+        skip in name
+        for skip in ["config", "preamble", "header", "macro", "command", "setup"]
+    ):
+        return True
+    # Check content - if mostly \usepackage/\def/\newcommand, it's preamble
+    try:
+        content = filepath.read_text(encoding="utf-8", errors="replace")
+        lines = [
+            line.strip()
+            for line in content.split("\n")
+            if line.strip() and not line.strip().startswith("%")
+        ]
+        if not lines:
+            return True
+        preamble_cmds = sum(
+            1
+            for line in lines
+            if re.match(
+                r"\\(usepackage|RequirePackage|def|newcommand|renewcommand|setlength|definecolor)",
+                line,
+            )
+        )
+        # If more than 50% are preamble commands, skip
+        if preamble_cmds / len(lines) > 0.5:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def find_included_files(tex_file: Path, base_dir: Path, visited: set) -> list[Path]:
+    """Recursively find all files included via \\input or \\include."""
+    if tex_file in visited or not tex_file.exists():
+        return []
+    visited.add(tex_file)
+
+    included = []
+    try:
+        content = tex_file.read_text(encoding="utf-8", errors="replace")
+        # Find \input{...} and \include{...}
+        patterns = [r"\\input\{([^}]+)\}", r"\\include\{([^}]+)\}"]
+        for pattern in patterns:
+            for match in re.finditer(pattern, content):
+                ref = match.group(1).strip()
+                # Skip common non-translatable includes
+                if any(
+                    skip in ref.lower()
+                    for skip in ["table", "bib", "sty", "cls", "bbl", "fig"]
+                ):
+                    continue
+                # Add .tex extension if missing
+                if not ref.endswith(".tex"):
+                    ref += ".tex"
+                # Resolve path relative to base_dir
+                inc_path = base_dir / ref
+                if inc_path.exists() and inc_path not in visited:
+                    # Skip preamble/config files
+                    if is_preamble_file(inc_path):
+                        continue
+                    included.append(inc_path)
+                    # Recursively find includes in this file
+                    included.extend(find_included_files(inc_path, base_dir, visited))
+    except Exception:
+        pass
+    return included
+
+
+def process_paper(paper_dir: Path) -> None:
+    """Process a paper directory and generate bilingual PDF."""
+    cfg = get_config()
+    print(f"Processing: {paper_dir.name}")
+
+    # Create output directory with copy of paper
+    output_dir = paper_dir.parent / f"{paper_dir.name}_bilingual"
+
+    if cfg and cfg.resume.lower() in ("true", "1", "yes") and output_dir.exists():
+        # Resume mode: keep existing output, reuse cache
+        print(f"Resuming translation in {output_dir}")
+        cache_dir = output_dir / ".translations"
+        if cache_dir.exists():
+            cached_count = len(list(cache_dir.glob("*.txt")))
+            print(f"  Found {cached_count} cached translations")
+    else:
+        # Fresh start: remove old and copy new
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        shutil.copytree(paper_dir, output_dir)
+        print(f"Copied to: {output_dir}")
+
+    # Fix common package conflicts
+    print("Checking for package conflicts...")
+    fix_package_conflicts(output_dir)
+
+    # Find main tex file (must contain \documentclass)
+    main_tex = None
+    tex_files = list(output_dir.glob("*.tex"))
+    for tex_file in tex_files:
+        try:
+            content = tex_file.read_text(encoding="utf-8")
+            if r"\documentclass" in content:
+                main_tex = tex_file
+                break
+        except Exception:
+            continue
+    if main_tex is None:
+        raise FileNotFoundError("No main tex file found (no file with \\documentclass)")
+
+    # Add CJK support to main file
+    print(f"Adding CJK support to {main_tex.name}...")
+    main_content = main_tex.read_text(encoding="utf-8")
+    main_content = add_cjk_support(main_content)
+    main_tex.write_text(main_content, encoding="utf-8")
+
+    # Start from main file and find all included files
+    visited: set[Path] = set()
+    included_files = find_included_files(main_tex, output_dir, visited)
+
+    # Always translate main file (document body)
+    print(f"Translating main file: {main_tex.name}")
+    content = main_tex.read_text(encoding="utf-8", errors="replace")
+    translated_content = translate_section_file(content, is_main_file=True, output_dir=output_dir)
+    main_tex.write_text(translated_content, encoding="utf-8")
+
+    # Also translate included files
+    if included_files:
+        print(f"Translating {len(included_files)} included files")
+        for inc_file in included_files:
+            rel_path = inc_file.relative_to(output_dir)
+            print(f"  {rel_path}")
+            content = inc_file.read_text(encoding="utf-8", errors="replace")
+            translated_content = translate_section_file(content, output_dir=output_dir)
+            inc_file.write_text(translated_content, encoding="utf-8")
+
+    # Compile with tectonic
+    print("\nCompiling with tectonic...")
+    try:
+        result = subprocess.run(
+            ["tectonic", main_tex.name],
+            cwd=output_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            pdf_name = main_tex.stem + ".pdf"
+            print(f"✓ PDF generated: {output_dir / pdf_name}")
+            # Open PDF
+            subprocess.run(["open", output_dir / pdf_name])
+        else:
+            print("Tectonic failed:")
+            print(result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr)
+    except subprocess.TimeoutExpired:
+        print("Tectonic compilation timed out")
+    except Exception as e:
+        print(f"Compilation error: {e}")
+
+    print(f"\nOutput directory: {output_dir}")
