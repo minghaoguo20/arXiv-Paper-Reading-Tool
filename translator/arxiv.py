@@ -2,10 +2,67 @@
 
 import re
 import tarfile
+from datetime import datetime
 from pathlib import Path
+from xml.etree import ElementTree
 
 import requests
 from tqdm import tqdm
+
+
+def get_arxiv_metadata(arxiv_id: str) -> dict | None:
+    """
+    Get paper metadata from arXiv API.
+
+    Args:
+        arxiv_id: arXiv paper ID (e.g., 2307.16789 or 2307.16789v2)
+
+    Returns:
+        Dictionary with 'arxiv_id', 'published', and 'category' keys, or None if failed.
+    """
+    # Strip version for API query (API returns latest version info)
+    base_id = re.sub(r"v\d+$", "", arxiv_id)
+    api_url = f"http://export.arxiv.org/api/query?id_list={base_id}"
+
+    try:
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+
+        # Parse XML response
+        root = ElementTree.fromstring(response.content)
+
+        # Define namespace
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "arxiv": "http://arxiv.org/schemas/atom",
+        }
+
+        # Find the entry
+        entry = root.find("atom:entry", ns)
+        if entry is None:
+            return None
+
+        # Get published date
+        published_elem = entry.find("atom:published", ns)
+        if published_elem is None or published_elem.text is None:
+            return None
+
+        # Parse date: 2025-11-05T12:34:56Z -> "5 Nov 2025"
+        pub_date = datetime.fromisoformat(published_elem.text.replace("Z", "+00:00"))
+        formatted_date = pub_date.strftime("%-d %b %Y")
+
+        # Get primary category
+        category_elem = entry.find("arxiv:primary_category", ns)
+        category = category_elem.get("term") if category_elem is not None else None
+
+        return {
+            "arxiv_id": arxiv_id,
+            "published": formatted_date,
+            "category": category,
+        }
+
+    except Exception:
+        return None
 
 
 def parse_arxiv_input(input_str: str) -> str | None:

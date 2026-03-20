@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from translator.api import batch_translate
+from translator.arxiv import get_arxiv_metadata
 from translator.latex import (
     add_cjk_support,
     assemble_translated_file,
@@ -25,6 +26,29 @@ def get_config() -> "Config | None":
     from translator.cli import Config
 
     return Config._instance
+
+
+def extract_arxiv_id_from_path(paper_dir: Path) -> str | None:
+    """
+    Extract arXiv ID from paper directory name.
+
+    Directory names are typically like:
+    - arXiv-2511.05271v4
+    - 2511.05271v4
+    - 2511.05271
+
+    Returns:
+        arXiv ID string or None if not found.
+    """
+    name = paper_dir.name
+
+    # Pattern for arXiv ID: YYMM.NNNNN or YYMM.NNNNNvN
+    arxiv_pattern = r"(\d{4}\.\d{4,5}(?:v\d+)?)"
+    match = re.search(arxiv_pattern, name)
+
+    if match:
+        return match.group(1)
+    return None
 
 
 def is_preamble_file(filepath: Path) -> bool:
@@ -139,10 +163,26 @@ def process_paper(paper_dir: Path) -> None:
     if main_tex is None:
         raise FileNotFoundError("No main tex file found (no file with \\documentclass)")
 
+    # Get arXiv metadata for watermark
+    arxiv_id = extract_arxiv_id_from_path(paper_dir)
+    metadata = None
+    if arxiv_id:
+        print(f"Fetching arXiv metadata for {arxiv_id}...")
+        metadata = get_arxiv_metadata(arxiv_id)
+        if metadata:
+            print(f"  Published: {metadata['published']}")
+            if metadata.get("category"):
+                print(f"  Category: {metadata['category']}")
+
     # Add CJK support to main file
     print(f"Adding CJK support to {main_tex.name}...")
     main_content = main_tex.read_text(encoding="utf-8")
-    main_content = add_cjk_support(main_content)
+    main_content = add_cjk_support(
+        main_content,
+        arxiv_id=metadata.get("arxiv_id") if metadata else None,
+        published_date=metadata.get("published") if metadata else None,
+        category=metadata.get("category") if metadata else None,
+    )
     main_tex.write_text(main_content, encoding="utf-8")
 
     # Start from main file and find all included files

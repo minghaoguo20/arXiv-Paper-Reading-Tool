@@ -137,6 +137,7 @@ def parse_file_for_translation(
         "adjustbox",
         "center",
         "tcolorbox",
+        "tikzpicture",
     ]
     all_envs = caption_envs + skip_envs
     env_depth = {env: 0 for env in all_envs}
