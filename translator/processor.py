@@ -8,7 +8,13 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from translator.latex import add_cjk_support, fix_package_conflicts, translate_section_file
+from translator.api import batch_translate
+from translator.latex import (
+    add_cjk_support,
+    assemble_translated_file,
+    fix_package_conflicts,
+    parse_file_for_translation,
+)
 
 if TYPE_CHECKING:
     from translator.cli import Config
@@ -143,21 +149,48 @@ def process_paper(paper_dir: Path) -> None:
     visited: set[Path] = set()
     included_files = find_included_files(main_tex, output_dir, visited)
 
-    # Always translate main file (document body)
-    print(f"Translating main file: {main_tex.name}")
-    content = main_tex.read_text(encoding="utf-8", errors="replace")
-    translated_content = translate_section_file(content, is_main_file=True, output_dir=output_dir)
-    main_tex.write_text(translated_content, encoding="utf-8")
+    # === Phase 1: Parse all files and collect all tasks ===
+    from translator.latex.parser import FileParseResult
 
-    # Also translate included files
+    all_tasks = []
+    file_results: dict[Path, FileParseResult] = {}
+    task_id_counter = 0
+
+    # Parse main file
+    print(f"Parsing main file: {main_tex.name}")
+    content = main_tex.read_text(encoding="utf-8", errors="replace")
+    result = parse_file_for_translation(content, is_main_file=True, task_id_start=task_id_counter)
+    result.file_path = main_tex
+    file_results[main_tex] = result
+    all_tasks.extend(result.tasks)
+    task_id_counter += len(result.tasks)
+
+    # Parse included files
     if included_files:
-        print(f"Translating {len(included_files)} included files")
+        print(f"Parsing {len(included_files)} included files")
         for inc_file in included_files:
             rel_path = inc_file.relative_to(output_dir)
             print(f"  {rel_path}")
             content = inc_file.read_text(encoding="utf-8", errors="replace")
-            translated_content = translate_section_file(content, output_dir=output_dir)
-            inc_file.write_text(translated_content, encoding="utf-8")
+            result = parse_file_for_translation(
+                content, is_main_file=False, task_id_start=task_id_counter
+            )
+            result.file_path = inc_file
+            file_results[inc_file] = result
+            all_tasks.extend(result.tasks)
+            task_id_counter += len(result.tasks)
+
+    print(f"Collected {len(all_tasks)} paragraphs from {len(file_results)} files")
+
+    # === Phase 2: Batch translate all paragraphs concurrently ===
+    max_workers = cfg.max_workers if cfg else 10
+    translations = batch_translate(all_tasks, output_dir, max_workers)
+
+    # === Phase 3: Assemble and write back each file ===
+    print("Assembling translated files...")
+    for file_path, parse_result in file_results.items():
+        final_content = assemble_translated_file(parse_result, translations)
+        file_path.write_text(final_content, encoding="utf-8")
 
     # Compile with tectonic
     print("\nCompiling with tectonic...")

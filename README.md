@@ -61,6 +61,12 @@ python translate.py --input 2307.16789 --model x
 # 自定义模型
 python translate.py --input 2307.16789 --model gpt-4.1-mini
 
+# 断点续翻（中断后继续，复用缓存）
+python translate.py --input 2307.16789 --resume true
+
+# 调整并发数（默认 10）
+python translate.py --input 2307.16789 --max_workers 20
+
 # 查看帮助
 python translate.py --help
 ```
@@ -84,6 +90,9 @@ tex/
 ├── arXiv-2307.16789v2.tar.gz      # 下载的源文件
 ├── arXiv-2307.16789v2/            # 解压后的原始文件
 └── arXiv-2307.16789v2_bilingual/  # 翻译输出
+    ├── .translations/             # 翻译缓存（用于断点续翻）
+    │   ├── a1b2c3d4e5f6.txt       # 段落 hash → 翻译内容
+    │   └── ...
     ├── main.tex                   # 添加了翻译的 LaTeX
     ├── sections/*.tex             # 翻译后的章节文件
     └── main.pdf                   # 最终双语 PDF
@@ -106,12 +115,37 @@ tex/
     ↓
 [解析文件] 从主文件递归查找 \input{} 和 \include{}
     ↓
-[翻译] 逐段翻译，添加 \trans{翻译内容}
+[全局并行翻译] 三阶段处理（见下文）
     ↓
 [编译] tectonic → PDF
     ↓
 [打开] 自动打开生成的 PDF
 ```
+
+### 全局并行翻译架构
+
+采用「全局并行」策略，所有文件的所有段落一起并发翻译：
+
+```
+阶段1: 解析
+├── 解析 main.tex
+├── 解析 section1.tex
+├── 解析 section2.tex
+└── 收集全部段落任务 → [task_0, task_1, ..., task_83]
+
+阶段2: 翻译
+└── batch_translate([所有段落]) → 一次性并发（受 max_workers 限制）
+
+阶段3: 组装
+├── 将翻译结果分发回 main.tex
+├── 将翻译结果分发回 section1.tex
+└── 将翻译结果分发回 section2.tex
+```
+
+优势：
+- **更快**：7 个文件只需 1 轮网络往返，而非 7 轮
+- **更高效**：所有段落统一调度，不会被单个文件的慢段落阻塞
+- **断点续翻友好**：缓存基于段落内容 hash，与文件结构无关
 
 ## 翻译规则
 
@@ -150,7 +184,9 @@ tex/
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--input` | (必填) | 输入源：arXiv ID、URL、本地目录或压缩包 |
-| `--model` | `gpt-5-nano` | 翻译模型，使用 `debug` 启用测试模式 |
+| `--model` | `gpt-5-nano` | 翻译模型，使用 `x` 启用测试模式 |
+| `--max_workers` | `10` | 最大并发 API 请求数 |
+| `--resume` | `false` | 断点续翻，复用已缓存的翻译 |
 | `--help` | - | 显示帮助信息 |
 
 ### 模型选项
@@ -158,6 +194,35 @@ tex/
 - `gpt-5-nano` - 默认模型
 - `gpt-4.1-mini` - 更强的模型
 - `x` / `debug` / `none` - 测试模式，不调用 API，使用 mock 翻译
+
+### 断点续翻
+
+翻译过程中如果中断（网络错误、API 限流等），可以使用 `--resume true` 继续：
+
+```bash
+# 首次翻译（中途中断）
+python translate.py --input 2307.16789
+
+# 继续翻译（复用已完成的翻译）
+python translate.py --input 2307.16789 --resume true
+```
+
+缓存机制：
+- 每个段落翻译完成后立即保存到 `.translations/` 目录
+- 基于段落内容的 hash 匹配，即使文件结构变化也能复用
+- 输出示例：`Cached: 58, Pending: 6`（58 个已缓存，6 个待翻译）
+
+### 并发控制
+
+根据 API 限流情况调整并发数：
+
+```bash
+# 降低并发（API 限流严格时）
+python translate.py --input 2307.16789 --max_workers 5
+
+# 提高并发（API 限流宽松时）
+python translate.py --input 2307.16789 --max_workers 20
+```
 
 ## 文件说明
 

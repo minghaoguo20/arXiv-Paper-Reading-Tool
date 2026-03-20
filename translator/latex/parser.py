@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,16 @@ from translator.api import TranslationTask, batch_translate
 
 if TYPE_CHECKING:
     from translator.cli import Config
+
+
+@dataclass
+class FileParseResult:
+    """Result of parsing a file for translation."""
+
+    file_path: Path = field(default_factory=lambda: Path())
+    result_parts: list[str | TranslationTask] = field(default_factory=list)
+    tasks: list[TranslationTask] = field(default_factory=list)
+    caption_tasks: list[tuple[int, str, TranslationTask]] = field(default_factory=list)
 
 
 def get_config() -> "Config | None":
@@ -93,19 +104,25 @@ def extract_caption_content(text: str) -> str:
     return text[start : end - 1]
 
 
-def translate_section_file(
-    content: str, is_main_file: bool = False, output_dir: Path | None = None
-) -> str:
-    """Translate a section file, adding Chinese translation after each paragraph.
+def parse_file_for_translation(
+    content: str,
+    is_main_file: bool = False,
+    task_id_start: int = 0,
+) -> FileParseResult:
+    """Parse file and collect translation tasks (no actual translation).
 
-    Uses two-pass approach:
-    1. Parse file, collect paragraphs to translate, insert placeholders
-    2. Batch translate all paragraphs concurrently
-    3. Replace placeholders with translations
+    Args:
+        content: File content to parse.
+        is_main_file: Whether this is the main file with preamble.
+        task_id_start: Starting task_id for global uniqueness.
+
+    Returns:
+        FileParseResult with parsed structure and tasks.
     """
-    result_parts: list[str | TranslationTask] = []  # Mixed list of strings and tasks
+    result_parts: list[str | TranslationTask] = []
     tasks: list[TranslationTask] = []
     lines = content.split("\n")
+    next_task_id = task_id_start
 
     # Track environments - separate caption-able envs from others
     caption_envs = ["figure", "table"]
@@ -138,7 +155,7 @@ def translate_section_file(
 
     def flush_paragraph():
         """Process accumulated paragraph - collect task instead of translating."""
-        nonlocal current_para
+        nonlocal current_para, next_task_id
         if not current_para:
             return
 
@@ -149,14 +166,19 @@ def translate_section_file(
         clean_para = clean_for_translation(para_text)
         if is_translatable_paragraph(clean_para):
             # Create task with placeholder
-            task = TranslationTask(index=len(result_parts), clean_text=clean_para)
+            task = TranslationTask(
+                task_id=next_task_id,
+                index=len(result_parts),
+                clean_text=clean_para,
+            )
+            next_task_id += 1
             tasks.append(task)
             result_parts.append(task)  # Placeholder for translation
             result_parts.append("")  # Empty line after translation
 
         current_para = []
 
-    # === Pass 1: Parse and collect translation tasks ===
+    # Parse and collect translation tasks
     for line in lines:
         stripped = line.strip()
 
@@ -192,7 +214,12 @@ def translate_section_file(
                 if caption_content and len(caption_content) >= 10:
                     clean_caption = clean_for_translation(caption_content)
                     if len(clean_caption) >= 10:
-                        task = TranslationTask(index=len(result_parts), clean_text=clean_caption)
+                        task = TranslationTask(
+                            task_id=next_task_id,
+                            index=len(result_parts),
+                            clean_text=clean_caption,
+                        )
+                        next_task_id += 1
                         tasks.append(task)
                         caption_tasks.append((len(result_parts), line, task))
                         result_parts.append(task)  # Placeholder
@@ -223,19 +250,33 @@ def translate_section_file(
 
     flush_paragraph()
 
-    # === Pass 2: Batch translate all tasks concurrently ===
-    cfg = get_config()
-    max_workers = cfg.max_workers if cfg else 10
-    translations = batch_translate(tasks, output_dir, max_workers)
+    return FileParseResult(
+        result_parts=result_parts,
+        tasks=tasks,
+        caption_tasks=caption_tasks,
+    )
 
-    # === Pass 3: Assemble final result ===
+
+def assemble_translated_file(
+    parse_result: FileParseResult,
+    translations: dict[int, str],
+) -> str:
+    """Assemble final content with translations.
+
+    Args:
+        parse_result: The parsed file structure.
+        translations: Dict mapping task_id -> translated text.
+
+    Returns:
+        Final assembled file content.
+    """
     # Build set of caption task indices for special handling
-    caption_task_map = {t.index: (orig_line, t) for _, orig_line, t in caption_tasks}
+    caption_task_map = {t.index: (orig_line, t) for _, orig_line, t in parse_result.caption_tasks}
 
     final_parts: list[str] = []
-    for part in result_parts:
+    for part in parse_result.result_parts:
         if isinstance(part, TranslationTask):
-            translated = translations.get(part.index, "")
+            translated = translations.get(part.task_id, "")
             if part.index in caption_task_map:
                 # Caption: output original line + translation
                 orig_line, _ = caption_task_map[part.index]
@@ -253,3 +294,24 @@ def translate_section_file(
             final_parts.append(part)
 
     return "\n".join(final_parts)
+
+
+def translate_section_file(
+    content: str, is_main_file: bool = False, output_dir: Path | None = None
+) -> str:
+    """Translate a section file, adding Chinese translation after each paragraph.
+
+    This is a convenience function that combines parsing, translation, and assembly.
+    For global parallel translation, use parse_file_for_translation() and
+    assemble_translated_file() separately.
+    """
+    # Parse file
+    parse_result = parse_file_for_translation(content, is_main_file)
+
+    # Batch translate
+    cfg = get_config()
+    max_workers = cfg.max_workers if cfg else 10
+    translations = batch_translate(parse_result.tasks, output_dir, max_workers)
+
+    # Assemble result
+    return assemble_translated_file(parse_result, translations)

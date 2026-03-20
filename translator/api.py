@@ -28,7 +28,8 @@ if TYPE_CHECKING:
 class TranslationTask:
     """A paragraph to be translated."""
 
-    index: int  # Position in result_parts for insertion
+    task_id: int  # Global unique ID for translation result mapping
+    index: int  # Position in result_parts for file assembly
     clean_text: str  # Cleaned text for translation API
 
 
@@ -107,7 +108,10 @@ def batch_translate(
     output_dir: Path | None = None,
     max_workers: int = 10,
 ) -> dict[int, str]:
-    """Translate multiple paragraphs concurrently with caching support."""
+    """Translate multiple paragraphs concurrently with caching support.
+
+    Returns dict mapping task_id -> translated text.
+    """
     if not tasks:
         return {}
 
@@ -121,7 +125,7 @@ def batch_translate(
             h = get_paragraph_hash(task.clean_text)
             cached = get_cached_translation(output_dir, h)
             if cached is not None:
-                results[task.index] = cached
+                results[task.task_id] = cached
             else:
                 pending_tasks.append((task, h))
 
@@ -137,7 +141,7 @@ def batch_translate(
     if cfg and cfg.debug_mode:
         for task, h in tqdm(pending_tasks, desc="Translating (debug)"):
             translation = translate(task.clean_text)
-            results[task.index] = translation
+            results[task.task_id] = translation
             if output_dir and translation:
                 save_cached_translation(output_dir, h, translation)
         return results
@@ -151,12 +155,12 @@ def batch_translate(
             task, h = futures[future]
             try:
                 translation = future.result()
-                results[task.index] = translation
+                results[task.task_id] = translation
                 # Save immediately after each translation (atomic)
                 if output_dir and translation:
                     save_cached_translation(output_dir, h, translation)
             except Exception as e:
                 print(f"  Translation failed: {e}")
-                results[task.index] = ""
+                results[task.task_id] = ""
 
     return results
