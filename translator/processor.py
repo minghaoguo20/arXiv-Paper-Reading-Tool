@@ -206,7 +206,7 @@ def process_paper(paper_dir: Path) -> None:
             pdf_name = main_tex.stem + ".pdf"
             print(f"✓ PDF generated: {output_dir / pdf_name}")
             # Open PDF
-            subprocess.run(["open", output_dir / pdf_name])
+            subprocess.run(["open", str(output_dir)])
         else:
             print("Tectonic failed:")
             print(result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr)
