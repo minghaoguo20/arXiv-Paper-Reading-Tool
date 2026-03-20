@@ -1,5 +1,7 @@
 # LaTeX 论文翻译工具
 
+中文 | [English](README_EN.md)
+
 将 arXiv 论文的 LaTeX 源文件翻译为中英双语 PDF。
 
 ## 功能特性
@@ -230,7 +232,8 @@ python translate.py --input 2307.16789 --max_workers 20
 translation/
 ├── translate.py    # 主程序
 ├── bugs.md         # Bug 记录和修复历史
-├── README.md       # 本文档
+├── README.md       # 本文档（中文）
+├── README_EN.md    # English documentation
 └── tex/            # 论文目录（自动创建）
 ```
 
