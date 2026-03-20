@@ -23,39 +23,48 @@ brew install tectonic
 ### Python 依赖
 
 ```bash
-pip install requests tqdm
+pip install requests tqdm draccus
 ```
 
-### 翻译 API（可选）
-
-默认使用测试模式（mock 翻译）。启用真实翻译需设置环境变量：
+### 环境变量
 
 ```bash
+# 翻译 API Key（必需，除非使用 --model x 测试模式）
 export ONE_API="your-api-key"
-```
 
-并修改 `translate.py` 中的 `TEST_MODE = False`。
+# 自定义 API 地址（可选，默认 https://api.bltcy.ai/v1/chat/completions）
+export API_URL="https://your-api-endpoint/v1/chat/completions"
+```
 
 ## 使用方法
 
 ```bash
 cd /Users/minghao/Desktop/translation
 
-# 方式 1: arXiv ID（自动下载最新版本）
-python translate.py 2307.16789
+# arXiv ID（自动下载最新版本）
+python translate.py --input 2307.16789
 
-# 方式 2: 指定版本
-python translate.py 2307.16789v1
+# 指定版本
+python translate.py --input 2307.16789v1
 
-# 方式 3: arXiv URL（支持 abs/pdf/src/html）
-python translate.py https://arxiv.org/abs/2307.16789
-python translate.py https://arxiv.org/pdf/2307.16789
+# arXiv URL（支持 abs/pdf/src/html）
+python translate.py --input https://arxiv.org/abs/2307.16789
+python translate.py --input https://arxiv.org/pdf/2307.16789
 
-# 方式 4: 本地压缩包
-python translate.py tex/arXiv-2307.16789.tar.gz
+# 本地压缩包
+python translate.py --input tex/arXiv-2307.16789.tar.gz
 
-# 方式 5: 本地目录
-python translate.py tex/arXiv-2307.16789v2
+# 本地目录
+python translate.py --input tex/arXiv-2307.16789v2
+
+# Debug 模式（不调用 API，使用 mock 翻译）
+python translate.py --input 2307.16789 --model x
+
+# 自定义模型
+python translate.py --input 2307.16789 --model gpt-4.1-mini
+
+# 查看帮助
+python translate.py --help
 ```
 
 ## 输入格式
@@ -138,18 +147,19 @@ tex/
 | hyperref pdftex 驱动错误 | 添加 `\PassOptionsToPackage{xetex}{hyperref}` |
 | 字体不支持 XeTeX | 使用 fontspec 设置系统字体 |
 
-## 配置选项
+## 命令行参数
 
-在 `translate.py` 中可修改：
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--input` | (必填) | 输入源：arXiv ID、URL、本地目录或压缩包 |
+| `--model` | `gpt-5-nano` | 翻译模型，使用 `debug` 启用测试模式 |
+| `--help` | - | 显示帮助信息 |
 
-```python
-# 测试模式（不调用 API，使用 mock 翻译）
-TEST_MODE = True
+### 模型选项
 
-# 翻译 API
-API_URL = "https://api.bltcy.ai/v1/chat/completions"
-MODEL_NAME = "gpt-4.1-nano"
-```
+- `gpt-5-nano` - 默认模型
+- `gpt-4.1-mini` - 更强的模型
+- `x` / `debug` / `none` - 测试模式，不调用 API，使用 mock 翻译
 
 ## 文件说明
 
@@ -173,7 +183,7 @@ translation/
 在 `is_preamble_file()` 函数中添加文件名模式。
 
 ### Q: 如何更换翻译 API？
-修改 `API_URL` 和 `translate()` 函数中的请求格式。
+设置环境变量 `API_URL`，需兼容 OpenAI API 格式。
 
 ### Q: 下载的文件保存在哪里？
 所有文件保存在 `tex/` 目录下，包括：
