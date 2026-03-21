@@ -2,18 +2,22 @@
 
 import re
 
+from translator.latex.engine import TexEngine
+
 
 def add_cjk_support(
     main_tex_content: str,
+    engine: TexEngine,
     arxiv_id: str | None = None,
     published_date: str | None = None,
     category: str | None = None,
 ) -> str:
     """
-    Add xeCJK package to main tex file for Chinese support.
+    Add CJK package to main tex file for Chinese support.
 
     Args:
         main_tex_content: The content of the main tex file.
+        engine: The TeX engine to use (determines which CJK package to add).
         arxiv_id: Optional arXiv ID for watermark (e.g., "2511.05271v4").
         published_date: Optional publication date for watermark (e.g., "5 Nov 2025").
         category: Optional arXiv category (e.g., "cs.CL").
@@ -21,6 +25,23 @@ def add_cjk_support(
     Returns:
         Modified tex content with CJK support and optional watermark.
     """
+    if engine == TexEngine.XELATEX:
+        return _add_xelatex_cjk_support(
+            main_tex_content, arxiv_id, published_date, category
+        )
+    else:
+        return _add_pdflatex_cjk_support(
+            main_tex_content, arxiv_id, published_date, category
+        )
+
+
+def _add_xelatex_cjk_support(
+    main_tex_content: str,
+    arxiv_id: str | None = None,
+    published_date: str | None = None,
+    category: str | None = None,
+) -> str:
+    """Add xeCJK support for XeLaTeX engine."""
     # First, add hyperref xetex driver option after \documentclass (before hyperref is loaded)
     doc_class_match = re.search(r"(\\documentclass[^\n]*\n)", main_tex_content)
     if doc_class_match:
@@ -69,11 +90,90 @@ def add_cjk_support(
 
     # Add watermark code after \begin{document} if metadata is provided
     if arxiv_id and published_date:
-        # Build watermark label
-        cat_str = f" [{category}]" if category else ""
-        watermark_label = f"arXiv:{arxiv_id}{cat_str} {published_date}"
+        main_tex_content = _add_watermark(
+            main_tex_content, arxiv_id, published_date, category
+        )
 
-        watermark_code = rf"""
+    return main_tex_content
+
+
+def _add_pdflatex_cjk_support(
+    main_tex_content: str,
+    arxiv_id: str | None = None,
+    published_date: str | None = None,
+    category: str | None = None,
+) -> str:
+    """Add CJKutf8 support for pdfLaTeX engine."""
+    # Build watermark packages if needed
+    watermark_packages = ""
+    if arxiv_id and published_date:
+        watermark_packages = r"""
+% === arXiv Watermark Packages (auto-added) ===
+\usepackage{tikz}
+\usepackage{eso-pic}
+"""
+
+    # Insert CJKutf8 BEFORE \begin{document}
+    doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
+    if doc_begin_match:
+        cjk_config = rf"""
+% === Chinese Support (auto-added by translator) ===
+\usepackage{{CJKutf8}}
+% Translation style
+\definecolor{{transcolor}}{{gray}}{{0.4}}
+\newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
+{watermark_packages}% === End Chinese Support ===
+
+"""
+        insert_pos = doc_begin_match.start()
+        main_tex_content = (
+            main_tex_content[:insert_pos] + cjk_config + main_tex_content[insert_pos:]
+        )
+
+    # Wrap document body with CJK environment
+    # Add \begin{CJK}{UTF8}{gbsn} after \begin{document}
+    doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
+    if doc_begin_match:
+        cjk_begin = r"""
+\begin{CJK}{UTF8}{gbsn}
+"""
+        insert_pos = doc_begin_match.end()
+        main_tex_content = (
+            main_tex_content[:insert_pos] + cjk_begin + main_tex_content[insert_pos:]
+        )
+
+    # Add \end{CJK} before \end{document}
+    doc_end_match = re.search(r"(\\end\{document\})", main_tex_content)
+    if doc_end_match:
+        cjk_end = r"""
+\end{CJK}
+"""
+        insert_pos = doc_end_match.start()
+        main_tex_content = (
+            main_tex_content[:insert_pos] + cjk_end + main_tex_content[insert_pos:]
+        )
+
+    # Add watermark code after \begin{document} and CJK begin if metadata is provided
+    if arxiv_id and published_date:
+        main_tex_content = _add_watermark(
+            main_tex_content, arxiv_id, published_date, category
+        )
+
+    return main_tex_content
+
+
+def _add_watermark(
+    content: str,
+    arxiv_id: str,
+    published_date: str,
+    category: str | None,
+) -> str:
+    """Add arXiv watermark after \\begin{document}."""
+    # Build watermark label
+    cat_str = f" [{category}]" if category else ""
+    watermark_label = f"arXiv:{arxiv_id}{cat_str} {published_date}"
+
+    watermark_code = rf"""
 % === arXiv Watermark (auto-added) ===
 \AddToShipoutPictureBG*{{%
   \begin{{tikzpicture}}[remember picture, overlay]
@@ -88,14 +188,16 @@ def add_cjk_support(
 }}
 % === End arXiv Watermark ===
 """
-        # Insert after \begin{document}
-        doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
+    # Insert after \begin{document} (and after CJK begin if present)
+    # Look for CJK begin first
+    cjk_begin_match = re.search(r"(\\begin\{CJK\}\{UTF8\}\{gbsn\}\n)", content)
+    if cjk_begin_match:
+        insert_pos = cjk_begin_match.end()
+    else:
+        doc_begin_match = re.search(r"(\\begin\{document\})", content)
         if doc_begin_match:
             insert_pos = doc_begin_match.end()
-            main_tex_content = (
-                main_tex_content[:insert_pos]
-                + watermark_code
-                + main_tex_content[insert_pos:]
-            )
+        else:
+            return content
 
-    return main_tex_content
+    return content[:insert_pos] + watermark_code + content[insert_pos:]

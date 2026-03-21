@@ -11,10 +11,15 @@ from typing import TYPE_CHECKING
 from translator.api import batch_translate
 from translator.arxiv import get_arxiv_metadata
 from translator.latex import (
+    TexEngine,
     add_cjk_support,
     assemble_translated_file,
+    detect_engine,
     fix_package_conflicts,
+    get_compile_command,
+    install_packages,
     parse_file_for_translation,
+    parse_missing_packages,
 )
 
 if TYPE_CHECKING:
@@ -145,9 +150,13 @@ def process_paper(paper_dir: Path) -> None:
         shutil.copytree(paper_dir, output_dir)
         print(f"Copied to: {output_dir}")
 
-    # Fix common package conflicts
+    # Detect LaTeX engine
+    engine = detect_engine(output_dir)
+    print(f"Detected engine: {engine.value}")
+
+    # Fix common package conflicts (engine-aware)
     print("Checking for package conflicts...")
-    fix_package_conflicts(output_dir)
+    fix_package_conflicts(output_dir, engine)
 
     # Find main tex file (must contain \documentclass)
     main_tex = None
@@ -175,10 +184,11 @@ def process_paper(paper_dir: Path) -> None:
                 print(f"  Category: {metadata['category']}")
 
     # Add CJK support to main file
-    print(f"Adding CJK support to {main_tex.name}...")
+    print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
     main_content = main_tex.read_text(encoding="utf-8")
     main_content = add_cjk_support(
         main_content,
+        engine=engine,
         arxiv_id=metadata.get("arxiv_id") if metadata else None,
         published_date=metadata.get("published") if metadata else None,
         category=metadata.get("category") if metadata else None,
@@ -232,27 +242,93 @@ def process_paper(paper_dir: Path) -> None:
         final_content = assemble_translated_file(parse_result, translations)
         file_path.write_text(final_content, encoding="utf-8")
 
-    # Compile with tectonic
-    print("\nCompiling with tectonic...")
-    try:
-        result = subprocess.run(
-            ["tectonic", main_tex.name],
-            cwd=output_dir,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode == 0:
-            pdf_name = main_tex.stem + ".pdf"
-            print(f"✓ PDF generated: {output_dir / pdf_name}")
-            # Open PDF
-            subprocess.run(["open", str(output_dir)])
-        else:
-            print("Tectonic failed:")
-            print(result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr)
-    except subprocess.TimeoutExpired:
-        print("Tectonic compilation timed out")
-    except Exception as e:
-        print(f"Compilation error: {e}")
+    # Compile with latexmk (with auto-install of missing packages)
+    compile_cmd = get_compile_command(engine, main_tex.name)
+    print(f"\nCompiling with {engine.value}...")
+
+    max_attempts = 20  # Prevent infinite loop
+    installed_packages: set[str] = set()  # Track installed packages to avoid loops
+
+    for attempt in range(max_attempts):
+        try:
+            result = subprocess.run(
+                compile_cmd,
+                cwd=output_dir,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                errors="replace",  # Handle non-UTF8 output
+            )
+            pdf_path = output_dir / (main_tex.stem + ".pdf")
+            xdv_path = output_dir / (main_tex.stem + ".xdv")
+
+            # Check if PDF was generated (success even with warnings)
+            if pdf_path.exists() and pdf_path.stat().st_size > 0:
+                print(f"✓ PDF generated: {pdf_path}")
+                # Open PDF
+                subprocess.run(["open", str(output_dir)])
+                break
+
+            # For XeLaTeX, .xdv may be generated but not converted to PDF
+            # If xdv exists and is recent, try to convert it
+            if (
+                engine == TexEngine.XELATEX
+                and xdv_path.exists()
+                and xdv_path.stat().st_size > 0
+            ):
+                print("  Converting XDV to PDF...")
+                try:
+                    conv_result = subprocess.run(
+                        ["xdvipdfmx", "-o", pdf_path.name, xdv_path.name],
+                        cwd=output_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if pdf_path.exists() and pdf_path.stat().st_size > 0:
+                        print(f"✓ PDF generated: {pdf_path}")
+                        subprocess.run(["open", str(output_dir)])
+                        break
+                except Exception:
+                    pass  # Fall through to error handling
+
+            if result.returncode != 0:
+                # Check for missing packages
+                output = result.stdout + result.stderr
+                missing = parse_missing_packages(output)
+
+                # Filter out packages we've already tried to install
+                new_missing = [pkg for pkg in missing if pkg not in installed_packages]
+
+                if new_missing and attempt < max_attempts - 1:
+                    if install_packages(new_missing):
+                        installed_packages.update(new_missing)
+                        # Add -g to force regeneration on retry
+                        if "-g" not in compile_cmd:
+                            compile_cmd.insert(1, "-g")
+                        print(f"  Retrying compilation (attempt {attempt + 2})...")
+                        continue
+
+                # No new packages to install or all attempts exhausted
+                # Check one more time if PDF exists (might have been generated despite error)
+                if pdf_path.exists() and pdf_path.stat().st_size > 0:
+                    print(f"✓ PDF generated (with warnings): {pdf_path}")
+                    subprocess.run(["open", str(output_dir)])
+                    break
+
+                print(f"Compilation failed ({engine.value}):")
+                print(output[-2000:] if len(output) > 2000 else output)
+                break
+        except subprocess.TimeoutExpired:
+            print("Compilation timed out")
+            break
+        except FileNotFoundError:
+            print("Error: latexmk not found. Please install TinyTeX or BasicTeX:")
+            print("  TinyTeX: curl -sL 'https://yihui.org/tinytex/install-bin-unix.sh' | sh")
+            print("  BasicTeX: brew install --cask basictex")
+            break
+        except Exception as e:
+            print(f"Compilation error: {e}")
+            break
 
     print(f"\nOutput directory: {output_dir}")

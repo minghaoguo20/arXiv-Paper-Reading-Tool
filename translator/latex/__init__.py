@@ -1,6 +1,13 @@
 """LaTeX processing utilities."""
 
 from translator.latex.cjk import add_cjk_support
+from translator.latex.engine import (
+    TexEngine,
+    detect_engine,
+    get_compile_command,
+    install_packages,
+    parse_missing_packages,
+)
 from translator.latex.fixes import fix_package_conflicts
 from translator.latex.parser import (
     FileParseResult,
@@ -15,6 +22,11 @@ from translator.latex.parser import (
 
 __all__ = [
     "add_cjk_support",
+    "TexEngine",
+    "detect_engine",
+    "get_compile_command",
+    "install_packages",
+    "parse_missing_packages",
     "fix_package_conflicts",
     "FileParseResult",
     "assemble_translated_file",

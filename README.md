@@ -11,24 +11,30 @@
 - **选择性翻译**：跳过 preamble/config 文件，只翻译正文内容
 - **保留原文**：翻译以灰色小字显示在原文下方，方便对照阅读
 - **自动修复冲突**：处理常见的 LaTeX 包冲突（subfigure/subcaption、natbib、CJK 等）
-- **XeTeX 编译**：使用 tectonic 编译，自动下载所需宏包，原生支持中文
+- **双引擎支持**：自动检测 pdfLaTeX/XeLaTeX，选择最佳引擎
+- **缺失包自动安装**：编译时自动检测并安装缺失的 LaTeX 包
 
 ## 安装
 
-### 系统依赖
-
-```bash
-# macOS
-brew install tectonic
-```
-
-### Python 依赖
+### 1. Python 依赖
 
 ```bash
 pip install requests tqdm draccus
 ```
 
-### 环境变量
+### 2. LaTeX 编译器 (TinyTeX)
+
+```bash
+# 安装 TinyTeX
+curl -sL "https://yihui.org/tinytex/install-bin-unix.sh" | sh
+
+# 安装 CJK 中文支持
+tlmgr install cjk ctex xecjk fontspec
+```
+
+> **注意**：编译时如果缺少包，程序会自动调用 `tlmgr install` 安装，无需手动处理。
+
+### 3. 环境变量
 
 ```bash
 # 翻译 API Key（必需，除非使用 --model x 测试模式）
@@ -119,7 +125,7 @@ tex/
     ↓
 [全局并行翻译] 三阶段处理（见下文）
     ↓
-[编译] tectonic → PDF
+[编译] latexmk (pdflatex/xelatex) + 自动安装缺失包
     ↓
 [打开] 自动打开生成的 PDF
 ```
@@ -178,8 +184,7 @@ tex/
 | subfigure/subcaption 冲突 | 注释 subfigure（保留 subcaption） |
 | natbib + unsrt 不兼容 | 添加 `[numbers]` 选项 |
 | CJK/CJKutf8 与 xeCJK 冲突 | 注释旧包，移除 CJK 环境 |
-| hyperref pdftex 驱动错误 | 添加 `\PassOptionsToPackage{xetex}{hyperref}` |
-| 字体不支持 XeTeX | 使用 fontspec 设置系统字体 |
+| 缺失 LaTeX 包 | 自动调用 `tlmgr install` 安装 |
 
 ## 命令行参数
 
@@ -187,7 +192,7 @@ tex/
 |------|--------|------|
 | `--input` | (必填) | 输入源：arXiv ID、URL、本地目录或压缩包 |
 | `--model` | `gpt-5-nano` | 翻译模型，使用 `x` 启用测试模式 |
-| `--max_workers` | `10` | 最大并发 API 请求数 |
+| `--max_workers` | `20` | 最大并发 API 请求数 |
 | `--resume` | `false` | 断点续翻，复用已缓存的翻译 |
 | `--help` | - | 显示帮助信息 |
 
@@ -226,22 +231,66 @@ python translate.py --input 2307.16789 --max_workers 5
 python translate.py --input 2307.16789 --max_workers 20
 ```
 
-## 文件说明
+## 项目结构
 
 ```
 translation/
-├── translate.py    # 主程序
-├── bugs.md         # Bug 记录和修复历史
-├── README.md       # 本文档（中文）
-├── README_EN.md    # English documentation
-└── tex/            # 论文目录（自动创建）
+├── translate.py              # 入口脚本
+├── README.md                 # 本文档（中文）
+├── README_EN.md              # English documentation
+├── translator/
+│   ├── cli.py                # 命令行配置
+│   ├── processor.py          # 主处理流程
+│   ├── arxiv.py              # arXiv 下载/解压
+│   ├── api.py                # 翻译 API 调用（并发）
+│   ├── cache.py              # 翻译缓存
+│   └── latex/
+│       ├── parser.py         # LaTeX 解析（段落提取）
+│       ├── cjk.py            # CJK 支持注入
+│       ├── engine.py         # 引擎检测 & 缺失包自动安装
+│       └── fixes.py          # 包冲突修复
+└── tex/                      # 论文目录（自动创建）
 ```
+
+## 缺失包自动安装
+
+编译时如果遇到缺失的 LaTeX 包，程序会自动安装：
+
+```
+Compiling with pdflatex...
+  Installing missing packages: xifthen
+  Retrying compilation (attempt 2)...
+  Installing missing packages: authblk
+  Retrying compilation (attempt 3)...
+✓ PDF generated: tex/arXiv-xxx_bilingual/main.pdf
+```
+
+### 工作原理
+
+1. 使用 `latexmk` 编译
+2. 如果失败，解析日志中的 `File 'xxx.sty' not found` 错误
+3. 调用 `tlmgr install` 安装缺失的包
+4. 清理辅助文件，重新编译
+5. 重复直到成功或达到 20 次重试上限
+
+### 包名映射
+
+某些 `.sty` 文件名与 tlmgr 包名不同，程序内置映射表处理：
+
+| 文件名 | tlmgr 包名 |
+|--------|-----------|
+| `authblk.sty` | preprint |
+| `nicefrac.sty` | units |
+| `newtxmath.sty` | newtx |
+| `zref-abspage.sty` | zref |
+
+对于未知映射，程序会自动通过 `tlmgr info` 查找正确的包名。
 
 ## 常见问题
 
 ### Q: 编译失败怎么办？
-查看 tectonic 错误输出，常见原因：
-- 缺少字体：确保系统有 Times New Roman、STHeiti
+查看错误输出，常见原因：
+- 字体缺失：`tlmgr install palatino charter newtx`
 - 包冲突：检查是否有未处理的包冲突
 - 语法错误：翻译可能引入了特殊字符
 
