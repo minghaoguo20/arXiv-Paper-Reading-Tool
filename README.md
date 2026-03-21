@@ -1,7 +1,5 @@
 # LaTeX 论文翻译工具
 
-中文 | [English](README_EN.md)
-
 将 arXiv 论文的 LaTeX 源文件翻译为中英双语 PDF。
 
 ## 功能特性
@@ -11,7 +9,7 @@
 - **选择性翻译**：跳过 preamble/config 文件，只翻译正文内容
 - **保留原文**：翻译以灰色小字显示在原文下方，方便对照阅读
 - **自动修复冲突**：处理常见的 LaTeX 包冲突（subfigure/subcaption、natbib、CJK 等）
-- **双引擎支持**：自动检测 pdfLaTeX/XeLaTeX，选择最佳引擎
+- **智能引擎回退**：默认使用 XeLaTeX（更好的中文支持），失败时自动回退到 pdfLaTeX
 - **缺失包自动安装**：编译时自动检测并安装缺失的 LaTeX 包
 
 ## 安装
@@ -72,8 +70,12 @@ python translate.py --input 2307.16789 --model gpt-4.1-mini
 # 断点续翻（中断后继续，复用缓存）
 python translate.py --input 2307.16789 --resume true
 
-# 调整并发数（默认 10）
+# 调整并发数（默认 20）
 python translate.py --input 2307.16789 --max_workers 20
+
+# 强制指定 LaTeX 引擎（默认 auto）
+python translate.py --input 2307.16789 --engine xelatex
+python translate.py --input 2307.16789 --engine pdflatex
 
 # 查看帮助
 python translate.py --help
@@ -125,7 +127,7 @@ tex/
     ↓
 [全局并行翻译] 三阶段处理（见下文）
     ↓
-[编译] latexmk (pdflatex/xelatex) + 自动安装缺失包
+[编译] XeLaTeX 优先 → 失败时回退 pdfLaTeX → 自动安装缺失包
     ↓
 [打开] 自动打开生成的 PDF
 ```
@@ -194,7 +196,21 @@ tex/
 | `--model` | `gpt-5-nano` | 翻译模型，使用 `x` 启用测试模式 |
 | `--max_workers` | `20` | 最大并发 API 请求数 |
 | `--resume` | `false` | 断点续翻，复用已缓存的翻译 |
+| `--engine` | `auto` | LaTeX 引擎：`auto`、`xelatex`、`pdflatex` |
 | `--help` | - | 显示帮助信息 |
+
+### 引擎选项
+
+| 值 | 说明 |
+|-----|------|
+| `auto` | 默认。优先使用 XeLaTeX，失败时自动回退到 pdfLaTeX |
+| `xelatex` | 强制使用 XeLaTeX（更好的中文和 Unicode 支持） |
+| `pdflatex` | 强制使用 pdfLaTeX（兼容性更好） |
+
+自动回退机制：
+- XeLaTeX 编译失败时，保留翻译缓存，重置输出目录
+- 切换到 pdfLaTeX 重新编译
+- 如果检测到语法错误（两个引擎都会失败），则不进行回退
 
 ### 模型选项
 
