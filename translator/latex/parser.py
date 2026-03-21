@@ -45,10 +45,37 @@ def is_translatable_paragraph(text: str) -> bool:
     return True
 
 
-def clean_for_translation(text: str) -> str:
-    """Clean LaTeX text before translation, removing commands but keeping content."""
-    # Remove comments
-    text = re.sub(r"%.*", "", text)
+def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
+    """Clean LaTeX text before translation, removing commands but keeping content.
+
+    Returns:
+        Tuple of (cleaned_text, refs_map) where refs_map maps placeholders to original LaTeX.
+    """
+    refs_map: dict[str, str] = {}
+
+    # Extract and replace inline math $...$ with unique placeholders
+    math_matches = re.findall(r"\$[^$]+\$", text)
+    for i, match in enumerate(math_matches):
+        placeholder = f"[MATH_{i}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
+    # Extract and replace \cite commands with unique placeholders
+    cite_matches = re.findall(r"~?\\cite[pt]?\{[^}]*\}", text)
+    for i, match in enumerate(cite_matches):
+        placeholder = f"[CITE_{i}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
+    # Extract and replace \ref commands with unique placeholders
+    ref_matches = re.findall(r"~?\\ref\{[^}]*\}", text)
+    for i, match in enumerate(ref_matches):
+        placeholder = f"[REF_{i}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
+    # Remove comments (% preceded by space or at line start, not percentages like 15%)
+    text = re.sub(r"(?<!\d)%.*", "", text)
     # Remove \begin{...}[options] and \end{...}
     text = re.sub(r"\\begin\{[^}]+\}(\[[^\]]*\])?", "", text)
     text = re.sub(r"\\end\{[^}]+\}", "", text)
@@ -60,12 +87,27 @@ def clean_for_translation(text: str) -> str:
     text = re.sub(r"\\textit\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\textbf\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\emph\{([^{}]*)\}", r"\1", text)
-    # Keep citations as [cite]
-    text = re.sub(r"~?\\cite[pt]?\{[^}]*\}", "[cite]", text)
-    text = re.sub(r"~?\\ref\{[^}]*\}", "[ref]", text)
     # Clean up whitespace
     text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    return text.strip(), refs_map
+
+
+def restore_refs(text: str, refs_map: dict[str, str]) -> str:
+    """Restore original LaTeX references from placeholders.
+
+    Args:
+        text: Translated text with placeholders.
+        refs_map: Mapping from placeholders to original LaTeX.
+
+    Returns:
+        Text with placeholders replaced by original LaTeX references.
+    """
+    for placeholder, original in refs_map.items():
+        # Handle both normal and escaped placeholders (e.g., [REF_0] and [REF\_0])
+        text = text.replace(placeholder, original)
+        escaped_placeholder = placeholder.replace("_", r"\_")
+        text = text.replace(escaped_placeholder, original)
+    return text
 
 
 def escape_for_latex(text: str) -> str:
@@ -187,13 +229,14 @@ def parse_file_for_translation(
         result_parts.extend(current_para)
 
         # Check if paragraph should be translated
-        clean_para = clean_for_translation(para_text)
+        clean_para, refs_map = clean_for_translation(para_text)
         if is_translatable_paragraph(clean_para):
             # Create task with placeholder
             task = TranslationTask(
                 task_id=next_task_id,
                 index=len(result_parts),
                 clean_text=clean_para,
+                refs_map=refs_map,
             )
             next_task_id += 1
             tasks.append(task)
@@ -241,12 +284,13 @@ def parse_file_for_translation(
                     # Caption is complete, process it
                     caption_content = extract_caption_content(combined)
                     if caption_content and len(caption_content) >= 10:
-                        clean_caption = clean_for_translation(caption_content)
+                        clean_caption, refs_map = clean_for_translation(caption_content)
                         if len(clean_caption) >= 10:
                             task = TranslationTask(
                                 task_id=next_task_id,
                                 index=len(result_parts),
                                 clean_text=clean_caption,
+                                refs_map=refs_map,
                             )
                             next_task_id += 1
                             tasks.append(task)
@@ -270,12 +314,13 @@ def parse_file_for_translation(
                     # Single-line caption
                     caption_content = extract_caption_content(line)
                     if caption_content and len(caption_content) >= 10:
-                        clean_caption = clean_for_translation(caption_content)
+                        clean_caption, refs_map = clean_for_translation(caption_content)
                         if len(clean_caption) >= 10:
                             task = TranslationTask(
                                 task_id=next_task_id,
                                 index=len(result_parts),
                                 clean_text=clean_caption,
+                                refs_map=refs_map,
                             )
                             next_task_id += 1
                             tasks.append(task)
@@ -348,13 +393,17 @@ def assemble_translated_file(
                 final_parts.extend(orig_lines)
                 if translated:
                     escaped = escape_for_latex(translated)
-                    final_parts.append("    \\trans{" + escaped + "}")
+                    # Restore refs after escaping (placeholders are not affected by escape)
+                    restored = restore_refs(escaped, part.refs_map)
+                    final_parts.append("    \\trans{" + restored + "}")
             else:
                 # Regular paragraph translation
                 if translated:
                     escaped = escape_for_latex(translated)
+                    # Restore refs after escaping (placeholders are not affected by escape)
+                    restored = restore_refs(escaped, part.refs_map)
                     final_parts.append("")
-                    final_parts.append(r"\trans{" + escaped + "}")
+                    final_parts.append(r"\trans{" + restored + "}")
         else:
             final_parts.append(part)
 

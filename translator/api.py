@@ -7,7 +7,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,6 +31,7 @@ class TranslationTask:
     task_id: int  # Global unique ID for translation result mapping
     index: int  # Position in result_parts for file assembly
     clean_text: str  # Cleaned text for translation API
+    refs_map: dict[str, str] = field(default_factory=dict)  # Placeholder -> original LaTeX
 
 
 def get_config() -> "Config | None":
@@ -74,6 +75,8 @@ def translate(text: str, target_lang: str = "Chinese", max_retries: int = 3) -> 
                     f"You are a professional translator specializing in academic papers. "
                     f"Translate the following English text to {target_lang}. "
                     "Keep all LaTeX commands, math formulas, and citations intact. "
+                    "IMPORTANT: Do NOT translate or modify placeholders like [MATH_0], [REF_0], [CITE_0]. "
+                    "Keep them exactly as they appear. "
                     "Only output the translation, nothing else."
                 ),
             },
