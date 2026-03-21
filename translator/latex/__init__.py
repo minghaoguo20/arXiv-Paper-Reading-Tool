@@ -5,7 +5,9 @@ from translator.latex.engine import (
     TexEngine,
     detect_engine,
     get_compile_command,
+    get_engine_sequence,
     install_packages,
+    is_unrecoverable_error,
     parse_missing_packages,
 )
 from translator.latex.fixes import fix_package_conflicts
@@ -25,7 +27,9 @@ __all__ = [
     "TexEngine",
     "detect_engine",
     "get_compile_command",
+    "get_engine_sequence",
     "install_packages",
+    "is_unrecoverable_error",
     "parse_missing_packages",
     "fix_package_conflicts",
     "FileParseResult",

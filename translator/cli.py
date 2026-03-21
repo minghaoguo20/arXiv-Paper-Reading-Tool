@@ -22,6 +22,8 @@ class Config:
     max_workers: int = 20
     # Continue from previous translation (reuse cached translations)
     resume: bool = False
+    # LaTeX engine: auto (XeLaTeX with pdfLaTeX fallback), xelatex, or pdflatex
+    engine: str = "auto"
 
     _instance: "Config" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
@@ -65,6 +67,10 @@ LaTeX Paper Translator - Common Commands:
 
   # Adjust concurrency (default: 10)
   python -m translator --input 2307.16789 --max_workers 20
+
+  # Force specific LaTeX engine (default: auto)
+  python -m translator --input 2307.16789 --engine xelatex
+  python -m translator --input 2307.16789 --engine pdflatex
 
 Environment:
   ONE_API    API key for bltcy.ai (required unless --model x/debug/none)

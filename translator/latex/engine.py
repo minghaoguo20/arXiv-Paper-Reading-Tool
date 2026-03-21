@@ -13,6 +13,73 @@ class TexEngine(Enum):
     XELATEX = "xelatex"
 
 
+def get_engine_sequence(output_dir: Path, engine_mode: str) -> list[TexEngine]:
+    """
+    Get the sequence of engines to try based on user preference.
+
+    Args:
+        output_dir: Directory containing tex files.
+        engine_mode: User-specified engine mode: "auto", "xelatex", or "pdflatex".
+
+    Returns:
+        List of engines to try in order.
+    """
+    if engine_mode == "xelatex":
+        return [TexEngine.XELATEX]
+    elif engine_mode == "pdflatex":
+        return [TexEngine.PDFLATEX]
+    else:  # auto mode
+        # Check for explicit pdflatex declaration in document
+        detected = detect_engine(output_dir)
+        if detected == TexEngine.PDFLATEX:
+            # Document explicitly uses pdflatex features, try pdflatex first
+            return [TexEngine.PDFLATEX, TexEngine.XELATEX]
+        else:
+            # Default: XeLaTeX first (better CJK), fallback to pdfLaTeX
+            return [TexEngine.XELATEX, TexEngine.PDFLATEX]
+
+
+def is_unrecoverable_error(output: str) -> bool:
+    """
+    Check if the compilation error is unrecoverable (will fail on any engine).
+
+    These are syntax errors or fundamental LaTeX errors that won't be fixed
+    by switching engines.
+
+    Args:
+        output: Combined stdout/stderr from compilation.
+
+    Returns:
+        True if the error is unrecoverable.
+    """
+    unrecoverable_patterns = [
+        # Syntax errors
+        r"Runaway argument",
+        r"Missing \\\$ inserted",
+        r"Extra \}, or forgotten \\\$",
+        r"Missing \{ inserted",
+        r"Missing \} inserted",
+        r"Undefined control sequence.*\\begin\{document\}",
+        r"Too many \}'s",
+        r"Extra alignment tab",
+        # Environment errors
+        r"\\begin\{[^}]+\} ended by \\end\{[^}]+\}",
+        r"Environment .* undefined",
+        # File errors that won't be fixed by engine switch
+        r"File `[^']+\.tex' not found",
+        r"Emergency stop",
+        # Fatal errors
+        r"Fatal error occurred",
+        r"No pages of output",
+    ]
+
+    for pattern in unrecoverable_patterns:
+        if re.search(pattern, output):
+            return True
+
+    return False
+
+
 def detect_engine(output_dir: Path) -> TexEngine:
     """
     Detect the appropriate LaTeX engine for a document.
