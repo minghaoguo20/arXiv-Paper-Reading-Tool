@@ -51,7 +51,7 @@ def add_cjk_support(
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{fontspec}}
 \usepackage{{xeCJK}}
-\setCJKmainfont{{STHeiti}}
+\setCJKmainfont{{PingFang SC}}
 % Override Times font (ptm) with native Times New Roman
 \setmainfont{{Times New Roman}}[Ligatures=TeX]
 \setsansfont{{Helvetica}}
