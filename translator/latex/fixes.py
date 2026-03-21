@@ -51,6 +51,50 @@ def fix_package_conflicts(output_dir: Path) -> None:
         except Exception:
             continue
 
+    # Fix pdfLaTeX-only commands that don't work in XeTeX
+    # \DeclareUnicodeCharacter is provided by inputenc and not available in XeTeX
+    # \usepackage{unicode} is a rare/custom package not available in tectonic
+    # microtype tracking option only works with pdfTeX
+    for tex_file in all_tex_files:
+        try:
+            content = tex_file.read_text(encoding="utf-8", errors="replace")
+            original = content
+            # Comment out \DeclareUnicodeCharacter (pdfLaTeX only, XeTeX handles Unicode natively)
+            content = re.sub(
+                r"(\\DeclareUnicodeCharacter\{[^}]*\}\{[^}]*\})",
+                r"% \1 % commented: XeTeX handles Unicode natively",
+                content,
+            )
+            # Comment out \usepackage{unicode} (rare package, XeTeX has native Unicode support)
+            content = re.sub(
+                r"(\\usepackage\{unicode\})",
+                r"% \1 % commented: XeTeX handles Unicode natively",
+                content,
+            )
+            if content != original:
+                tex_file.write_text(content, encoding="utf-8")
+                print(f"  Fixed pdfLaTeX-only commands in {tex_file.name}")
+        except Exception:
+            continue
+
+    # Fix microtype tracking option (only works with pdfTeX, not XeTeX)
+    all_cls_files = list(output_dir.glob("**/*.cls"))
+    for cls_file in all_tex_files + all_cls_files:
+        try:
+            content = cls_file.read_text(encoding="utf-8", errors="replace")
+            original = content
+            # Remove tracking option from microtype (tracking=... only works with pdfTeX)
+            content = re.sub(
+                r"(\\(?:RequirePackage|usepackage))\[tracking=[^\]]*\](\{microtype\})",
+                r"\1\2",
+                content,
+            )
+            if content != original:
+                cls_file.write_text(content, encoding="utf-8")
+                print(f"  Fixed microtype tracking option in {cls_file.name}")
+        except Exception:
+            continue
+
     # Replace old CJK package with xeCJK (for XeTeX compatibility)
     # Check for any CJK-related packages
     has_cjk = re.search(r"\\usepackage\{CJK(utf8)?\}", all_content)

@@ -131,7 +131,7 @@ def process_paper(paper_dir: Path) -> None:
     # Create output directory with copy of paper
     output_dir = paper_dir.parent / f"{paper_dir.name}_bilingual"
 
-    if cfg and cfg.resume.lower() in ("true", "1", "yes") and output_dir.exists():
+    if cfg and cfg.resume and output_dir.exists():
         # Resume mode: keep existing output, reuse cache
         print(f"Resuming translation in {output_dir}")
         cache_dir = output_dir / ".translations"

@@ -21,8 +21,7 @@ class Config:
     # Maximum concurrent API calls
     max_workers: int = 20
     # Continue from previous translation (reuse cached translations)
-    # Use "true"/"false" string for draccus compatibility
-    resume: str = "false"
+    resume: bool = False
 
     _instance: "Config" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
