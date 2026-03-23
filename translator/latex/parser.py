@@ -31,6 +31,35 @@ def get_config() -> "Config | None":
     return Config._instance
 
 
+def sanitize_line(line: str) -> str:
+    """Sanitize a line for bilingual output.
+
+    Applies transformations to avoid layout conflicts in translated documents:
+    - Convert wrapfigure to figure (text wrapping conflicts with translations)
+    - Remove negative vspace (causes overlap when content increases)
+    """
+    # Convert \begin{wrapfigure}... to \begin{figure}[!ht]
+    # Handle: \begin{wrapfigure}[lines]{pos}{width} (with optional lines arg)
+    line = re.sub(
+        r"\\begin\{wrapfigure\}\[[^\]]*\]\{[^}]*\}\{[^}]*\}",
+        r"\\begin{figure}[!ht]",
+        line,
+    )
+    # Handle: \begin{wrapfigure}{pos}{width} (without optional arg)
+    line = re.sub(
+        r"\\begin\{wrapfigure\}\{[^}]*\}\{[^}]*\}",
+        r"\\begin{figure}[!ht]",
+        line,
+    )
+    # Convert \end{wrapfigure} to \end{figure}
+    line = re.sub(r"\\end\{wrapfigure\}", r"\\end{figure}", line)
+
+    # Remove negative \vspace (e.g., \vspace{-10pt}, \vspace{-2em})
+    line = re.sub(r"\\vspace\{-[^}]*\}", "", line)
+
+    return line
+
+
 def is_translatable_paragraph(text: str) -> bool:
     """Check if a text block should be translated."""
     text = text.strip()
@@ -186,9 +215,12 @@ def parse_file_for_translation(
 
     # Track environments - separate caption-able envs from others
     # caption_envs: Allow \caption{} translation, skip other content
+    # Note: wrapfigure is converted to figure by convert_wrapfigure_line()
     caption_envs = [
         "figure",
+        "figure*",        # Two-column figure
         "table",
+        "table*",         # Two-column table
         "longtable",      # Long tables (multi-page) - has caption inside
         "tabularx",       # Extended tabular - may have caption
         "tabulary",       # Auto-width tabular - may have caption
@@ -257,6 +289,8 @@ def parse_file_for_translation(
 
     # Parse and collect translation tasks
     for line in lines:
+        # Sanitize line: convert wrapfigure to figure, remove negative vspace
+        line = sanitize_line(line)
         stripped = line.strip()
 
         # Track \begin{document} and \end{document}

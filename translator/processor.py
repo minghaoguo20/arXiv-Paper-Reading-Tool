@@ -393,11 +393,14 @@ def process_paper(paper_dir: Path) -> None:
     output_dir = paper_dir.parent / f"{paper_dir.name}_bilingual"
 
     if cfg and cfg.resume and output_dir.exists():
-        # Resume mode: keep existing output, reuse cache
-        print(f"Resuming translation in {output_dir}")
+        # Resume mode: reset source files but keep cache
         cache_dir = output_dir / ".translations"
+        cached_count = 0
         if cache_dir.exists():
             cached_count = len(list(cache_dir.glob("*.txt")))
+        _reset_output_dir(paper_dir, output_dir)
+        print(f"Resuming translation in {output_dir}")
+        if cached_count > 0:
             print(f"  Found {cached_count} cached translations")
     else:
         # Fresh start: remove old and copy new
