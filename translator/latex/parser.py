@@ -103,6 +103,14 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
         refs_map[placeholder] = match
         text = text.replace(match, placeholder, 1)
 
+    # Extract and replace no-arg macros (e.g., \model, \dataset, \LaTeX)
+    # Match \xxx not followed by { or letter (to avoid \textbf{...} etc.)
+    macro_matches = list(set(re.findall(r"\\[a-zA-Z]+(?![{a-zA-Z])", text)))
+    for i, match in enumerate(macro_matches):
+        placeholder = f"[MACRO_{i}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder)
+
     # Remove comments (% preceded by space or at line start, not percentages like 15%)
     text = re.sub(r"(?<!\d)%.*", "", text)
     # Remove \begin{...}[options] and \end{...}

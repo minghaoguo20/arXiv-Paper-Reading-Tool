@@ -75,7 +75,7 @@ def translate(text: str, target_lang: str = "Chinese", max_retries: int = 3) -> 
                     f"You are a professional translator specializing in academic papers. "
                     f"Translate the following English text to {target_lang}. "
                     "Keep all LaTeX commands, math formulas, and citations intact. "
-                    "IMPORTANT: Do NOT translate or modify placeholders like [MATH_0], [REF_0], [CITE_0]. "
+                    "IMPORTANT: Do NOT translate or modify placeholders like [MATH_0], [REF_0], [CITE_0], [MACRO_0]. "
                     "Keep them exactly as they appear. "
                     "Only output the translation, nothing else."
                 ),
