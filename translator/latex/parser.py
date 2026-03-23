@@ -398,14 +398,38 @@ def assemble_translated_file(
         if isinstance(part, TranslationTask):
             translated = translations.get(part.task_id, "")
             if part.index in caption_task_map:
-                # Caption: output original lines + translation after the caption
+                # Caption: insert translation inside \caption{} command
                 orig_lines, _ = caption_task_map[part.index]
-                final_parts.extend(orig_lines)
                 if translated:
                     escaped = escape_for_latex(translated)
-                    # Restore refs after escaping (placeholders are not affected by escape)
                     restored = restore_refs(escaped, part.refs_map)
-                    final_parts.append("    \\trans{" + restored + "}")
+                    trans_text = " \\trans{" + restored + "}"
+
+                    # Combine all original lines to find the caption closing brace
+                    combined = "\n".join(orig_lines)
+
+                    # Find the position of the closing brace for \caption{}
+                    match = re.search(r"\\caption\{", combined)
+                    if match:
+                        start = match.end()
+                        depth = 1
+                        end = start
+                        while end < len(combined) and depth > 0:
+                            if combined[end] == "{":
+                                depth += 1
+                            elif combined[end] == "}":
+                                depth -= 1
+                            end += 1
+
+                        # Insert translation before the closing brace
+                        modified = combined[:end-1] + trans_text + combined[end-1:]
+                        final_parts.extend(modified.split("\n"))
+                    else:
+                        # Fallback: just output original lines if no caption found
+                        final_parts.extend(orig_lines)
+                else:
+                    # No translation, just output original lines
+                    final_parts.extend(orig_lines)
             else:
                 # Regular paragraph translation
                 if translated:

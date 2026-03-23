@@ -373,8 +373,12 @@ def infer_font_encoding(font_name: str) -> str:
     Returns:
         LaTeX encoding name (e.g., 'LGR', 'T1', 'OT1').
     """
-    # CB Greek fonts (cyber*, grmn*, grml*)
-    if font_name.startswith(("cyber", "grmn", "grml")):
+    # CJK fonts (cyberb* from zhmetrics) - these need special handling, not font fallback
+    if font_name.startswith("cyberb"):
+        return "C70"  # CJK Unicode encoding
+
+    # CB Greek fonts (grmn*, grml*, but NOT cyberb*)
+    if font_name.startswith(("grmn", "grml")):
         return "LGR"
 
     # T1 encoded fonts
@@ -397,12 +401,22 @@ def generate_font_fallback(font_name: str) -> str:
         font_name: Missing font name (e.g., 'cyberb8f').
 
     Returns:
-        LaTeX code declaring font substitutions.
+        LaTeX code declaring font substitutions, or empty string if no fallback possible.
     """
     encoding = infer_font_encoding(font_name)
 
+    # CJK fonts (C70 encoding) cannot be substituted with Computer Modern
+    # These need proper CJK font installation or font family mapping
+    if encoding == "C70":
+        # Return empty - CJK font issues should be fixed by proper font mapping
+        # in cjk.py, not by font fallback
+        return f"""
+% === CJK font {font_name} missing (auto-noted) ===
+% CJK fonts require proper installation, cannot substitute with CM
+"""
+
     # Extract font family (usually first 3-4 characters)
-    # cyberb8f -> cyber, pcrr8t -> pcr
+    # pcrr8t -> pcr
     if len(font_name) >= 3:
         family = font_name[:4] if font_name[:4].isalpha() else font_name[:3]
     else:

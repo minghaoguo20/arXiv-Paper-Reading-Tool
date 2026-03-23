@@ -120,16 +120,17 @@ def _add_pdflatex_cjk_support(
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{CJKutf8}}
 
-% === Font Fallback for pdfLaTeX (auto-added) ===
-% Prevent common font errors by mapping problematic fonts to Computer Modern
-% CB Greek fonts (cyber*) -> Computer Modern (for Greek letters in math)
-\DeclareFontFamily{{LGR}}{{cmr}}{{}}
-\DeclareFontShape{{LGR}}{{cmr}}{{m}}{{n}}{{<->ssub*cmr/m/n}}{{}}
-\DeclareFontShape{{LGR}}{{cmr}}{{m}}{{it}}{{<->ssub*cmr/m/it}}{{}}
-\DeclareFontShape{{LGR}}{{cmr}}{{m}}{{sl}}{{<->ssub*cmr/m/sl}}{{}}
-\DeclareFontShape{{LGR}}{{cmr}}{{b}}{{n}}{{<->ssub*cmr/bx/n}}{{}}
-\DeclareFontShape{{LGR}}{{cmr}}{{bx}}{{n}}{{<->ssub*cmr/bx/n}}{{}}
-\DeclareFontShape{{LGR}}{{cmr}}{{bx}}{{it}}{{<->ssub*cmr/bx/it}}{{}}
+% === CJK Font Mappings for pdfLaTeX (auto-added) ===
+% Map common font families to gbsn to avoid fallback to song/cyberb
+\DeclareFontFamily{{C70}}{{phv}}{{}}
+\DeclareFontShape{{C70}}{{phv}}{{m}}{{n}}{{<-> CJK * gbsnu}}{{\CJKnormal}}
+\DeclareFontShape{{C70}}{{phv}}{{bx}}{{n}}{{<-> CJKb * gbsnu}}{{\CJKbold}}
+\DeclareFontFamily{{C70}}{{ptm}}{{}}
+\DeclareFontShape{{C70}}{{ptm}}{{m}}{{n}}{{<-> CJK * gbsnu}}{{\CJKnormal}}
+\DeclareFontShape{{C70}}{{ptm}}{{bx}}{{n}}{{<-> CJKb * gbsnu}}{{\CJKbold}}
+\DeclareFontFamily{{C70}}{{pcr}}{{}}
+\DeclareFontShape{{C70}}{{pcr}}{{m}}{{n}}{{<-> CJK * gbsnu}}{{\CJKnormal}}
+\DeclareFontShape{{C70}}{{pcr}}{{bx}}{{n}}{{<-> CJKb * gbsnu}}{{\CJKbold}}
 % Suppress font substitution warnings
 \pdfsuppresswarningpagegroup=1
 
