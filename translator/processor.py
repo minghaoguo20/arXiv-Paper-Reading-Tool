@@ -14,6 +14,7 @@ from translator.latex import (
     TexEngine,
     add_cjk_support,
     assemble_translated_file,
+    detect_engine,
     fix_package_conflicts,
     get_compile_command,
     get_engine_sequence,
@@ -381,10 +382,26 @@ def process_paper(paper_dir: Path) -> None:
         shutil.copytree(paper_dir, output_dir)
         print(f"Copied to: {output_dir}")
 
+    # Detect source file's preferred engine
+    detected_engine = detect_engine(output_dir)
+    # Color codes: bold yellow for pdflatex hint, bold cyan for xelatex hint
+    if detected_engine == TexEngine.PDFLATEX:
+        color = "\033[1;33m"  # Bold Yellow
+        hint = "pdfLaTeX features detected (fontenc, inputenc, etc.)"
+    else:
+        color = "\033[1;36m"  # Bold Cyan
+        hint = "XeLaTeX compatible (default)"
+    print(f"Source analysis: {color}[{detected_engine.value}]\033[0m - {hint}")
+
     # Get engine sequence based on user preference
     engine_mode = cfg.engine if cfg else "auto"
-    engines = get_engine_sequence(output_dir, engine_mode)
-    print(f"Engine mode: {engine_mode} -> trying: {[e.value for e in engines]}")
+    if engine_mode == "auto":
+        # In auto mode, always start with XeLaTeX (better CJK support)
+        engines = [TexEngine.XELATEX]
+        print(f"Engine: \033[1;32m[xelatex]\033[0m (default, best for CJK)")
+    else:
+        engines = get_engine_sequence(output_dir, engine_mode)
+        print(f"Engine: \033[1;32m[{engine_mode}]\033[0m (user specified)")
 
     # Get arXiv metadata for watermark
     arxiv_id = extract_arxiv_id_from_path(paper_dir)
@@ -397,33 +414,48 @@ def process_paper(paper_dir: Path) -> None:
             if metadata.get("category"):
                 print(f"  Category: {metadata['category']}")
 
-    # Try each engine in sequence
-    for i, engine in enumerate(engines):
-        is_retry = i > 0
-        success, error_output = _process_with_engine(
-            paper_dir, output_dir, engine, cfg, metadata, is_retry
-        )
+    # Try first engine
+    current_engine = engines[0]
+    success, error_output = _process_with_engine(
+        paper_dir, output_dir, current_engine, cfg, metadata, is_retry=False
+    )
 
-        if success:
-            break
-
-        # Check if we should try the next engine
-        if i < len(engines) - 1:
-            # Check for unrecoverable errors
-            if is_unrecoverable_error(error_output):
-                print(f"\nUnrecoverable error detected, not retrying with other engines:")
-                print(error_output[-2000:] if len(error_output) > 2000 else error_output)
-                break
-
-            print(f"\n{engine.value} failed, will try {engines[i+1].value}...")
+    # If failed and in auto mode, ask user whether to try pdfLaTeX
+    if not success and engine_mode == "auto" and current_engine == TexEngine.XELATEX:
+        # Check for unrecoverable errors first
+        if is_unrecoverable_error(error_output):
+            print(f"\n\033[1;31m[Unrecoverable error detected (syntax error, etc.)]\033[0m")
+            print(error_output[-2000:] if len(error_output) > 2000 else error_output)
         else:
-            # Last engine also failed
-            print(f"\nCompilation failed ({engine.value}):")
-            if error_output == "latexmk not found":
-                print("Error: latexmk not found. Please install TinyTeX or BasicTeX:")
-                print("  TinyTeX: curl -sL 'https://yihui.org/tinytex/install-bin-unix.sh' | sh")
-                print("  BasicTeX: brew install --cask basictex")
-            else:
-                print(error_output[-2000:] if len(error_output) > 2000 else error_output)
+            print(f"\n\033[1;33m[XeLaTeX compilation failed]\033[0m")
+            print("Error summary:")
+            # Show last 500 chars of error
+            print(error_output[-500:] if len(error_output) > 500 else error_output)
+            print()
+
+            # Ask user whether to try pdfLaTeX
+            try:
+                response = input("\033[1;36m[Try pdfLaTeX instead?] [y/N]: \033[0m").strip().lower()
+                if response == "y":
+                    success, error_output = _process_with_engine(
+                        paper_dir, output_dir, TexEngine.PDFLATEX, cfg, metadata, is_retry=True
+                    )
+                    if not success:
+                        print(f"\n\033[1;31m[pdfLaTeX also failed]\033[0m")
+                        print(error_output[-2000:] if len(error_output) > 2000 else error_output)
+                else:
+                    print("Skipped pdfLaTeX fallback.")
+            except (EOFError, KeyboardInterrupt):
+                print("\nAborted.")
+
+    elif not success:
+        # User specified engine failed
+        print(f"\n\033[1;31m[Compilation failed ({current_engine.value})]\033[0m")
+        if error_output == "latexmk not found":
+            print("Error: latexmk not found. Please install TinyTeX or BasicTeX:")
+            print("  TinyTeX: curl -sL 'https://yihui.org/tinytex/install-bin-unix.sh' | sh")
+            print("  BasicTeX: brew install --cask basictex")
+        else:
+            print(error_output[-2000:] if len(error_output) > 2000 else error_output)
 
     print(f"\nOutput directory: {output_dir}")

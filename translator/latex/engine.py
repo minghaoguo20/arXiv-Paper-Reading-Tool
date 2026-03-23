@@ -52,6 +52,11 @@ def is_unrecoverable_error(output: str) -> bool:
     Returns:
         True if the error is unrecoverable.
     """
+    # If error is due to missing packages, it's potentially recoverable
+    # by switching engines (the other engine might have the package)
+    if re.search(r"File `[^']+\.(sty|cls)' not found", output):
+        return False
+
     unrecoverable_patterns = [
         # Syntax errors
         r"Runaway argument",
@@ -67,10 +72,8 @@ def is_unrecoverable_error(output: str) -> bool:
         r"Environment .* undefined",
         # File errors that won't be fixed by engine switch
         r"File `[^']+\.tex' not found",
-        r"Emergency stop",
-        # Fatal errors
+        # Fatal errors (but NOT "Emergency stop" alone - could be from missing package)
         r"Fatal error occurred",
-        r"No pages of output",
     ]
 
     for pattern in unrecoverable_patterns:
