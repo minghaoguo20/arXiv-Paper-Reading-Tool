@@ -3,11 +3,13 @@
 from translator.latex.cjk import add_cjk_support
 from translator.latex.engine import (
     TexEngine,
+    add_font_fallbacks_to_file,
     detect_engine,
     get_compile_command,
     get_engine_sequence,
     install_packages,
     is_unrecoverable_error,
+    parse_missing_fonts,
     parse_missing_packages,
 )
 from translator.latex.fixes import fix_package_conflicts
@@ -24,12 +26,14 @@ from translator.latex.parser import (
 
 __all__ = [
     "add_cjk_support",
+    "add_font_fallbacks_to_file",
     "TexEngine",
     "detect_engine",
     "get_compile_command",
     "get_engine_sequence",
     "install_packages",
     "is_unrecoverable_error",
+    "parse_missing_fonts",
     "parse_missing_packages",
     "fix_package_conflicts",
     "FileParseResult",

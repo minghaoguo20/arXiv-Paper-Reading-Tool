@@ -13,6 +13,7 @@ from translator.arxiv import get_arxiv_metadata
 from translator.latex import (
     TexEngine,
     add_cjk_support,
+    add_font_fallbacks_to_file,
     assemble_translated_file,
     detect_engine,
     fix_package_conflicts,
@@ -21,6 +22,7 @@ from translator.latex import (
     install_packages,
     is_unrecoverable_error,
     parse_file_for_translation,
+    parse_missing_fonts,
     parse_missing_packages,
 )
 
@@ -176,6 +178,7 @@ def _compile_with_engine(
     compile_cmd = get_compile_command(engine, main_tex.name)
     max_attempts = 20
     installed_packages: set[str] = set()
+    fixed_fonts: set[str] = set()  # Track fonts we've added fallbacks for
     last_output = ""
 
     for attempt in range(max_attempts):
@@ -191,13 +194,17 @@ def _compile_with_engine(
             pdf_path = output_dir / (main_tex.stem + ".pdf")
             xdv_path = output_dir / (main_tex.stem + ".xdv")
 
-            # Check if PDF was generated
+            # latexmk handles the full compilation process including BibTeX
+            # Check if PDF was generated (even if latexmk reported warnings)
             if pdf_path.exists() and pdf_path.stat().st_size > 0:
-                print(f"✓ PDF generated: {pdf_path}")
+                if result.returncode == 0:
+                    print(f"✓ PDF generated: {pdf_path}")
+                else:
+                    print(f"✓ PDF generated (with warnings): {pdf_path}")
                 subprocess.run(["open", str(output_dir)])
                 return True, ""
 
-            # For XeLaTeX, try converting .xdv to PDF
+            # For XeLaTeX, try converting .xdv to PDF if PDF doesn't exist
             if (
                 engine == TexEngine.XELATEX
                 and xdv_path.exists()
@@ -213,7 +220,10 @@ def _compile_with_engine(
                         timeout=60,
                     )
                     if pdf_path.exists() and pdf_path.stat().st_size > 0:
-                        print(f"✓ PDF generated: {pdf_path}")
+                        if result.returncode == 0:
+                            print(f"✓ PDF generated: {pdf_path}")
+                        else:
+                            print(f"✓ PDF generated (with warnings): {pdf_path}")
                         subprocess.run(["open", str(output_dir)])
                         return True, ""
                 except Exception:
@@ -221,6 +231,8 @@ def _compile_with_engine(
 
             if result.returncode != 0:
                 last_output = result.stdout + result.stderr
+
+                # First, try to install missing packages
                 missing = parse_missing_packages(last_output)
                 new_missing = [pkg for pkg in missing if pkg not in installed_packages]
 
@@ -230,6 +242,18 @@ def _compile_with_engine(
                         if "-g" not in compile_cmd:
                             compile_cmd.insert(1, "-g")
                         print(f"  Retrying compilation (attempt {attempt + 2})...")
+                        continue
+
+                # Second, check for font errors and add fallbacks
+                if engine == TexEngine.PDFLATEX and attempt < max_attempts - 1:
+                    missing_fonts = parse_missing_fonts(last_output)
+                    new_fonts = [f for f in missing_fonts if f not in fixed_fonts]
+
+                    if new_fonts:
+                        print(f"  Detected missing fonts: {', '.join(new_fonts)}")
+                        add_font_fallbacks_to_file(main_tex, new_fonts)
+                        fixed_fonts.update(new_fonts)
+                        print(f"  Added font fallbacks, retrying compilation...")
                         continue
 
                 # Check one more time if PDF exists

@@ -185,14 +185,24 @@ def parse_file_for_translation(
     next_task_id = task_id_start
 
     # Track environments - separate caption-able envs from others
-    caption_envs = ["figure", "table"]
+    # caption_envs: Allow \caption{} translation, skip other content
+    caption_envs = [
+        "figure",
+        "table",
+        "longtable",      # Long tables (multi-page) - has caption inside
+        "tabularx",       # Extended tabular - may have caption
+        "tabulary",       # Auto-width tabular - may have caption
+        "supertabular",   # Another multi-page table - may have caption
+        "xtabular",       # Extended tabular - may have caption
+    ]
+    # skip_envs: Skip everything (no translation at all)
     skip_envs = [
         "equation",
         "align",
         "gather",
         "lstlisting",
         "algorithm",
-        "tabular",
+        "tabular",        # Basic tabular (no caption inside)
         "minipage",
         "adjustbox",
         "center",

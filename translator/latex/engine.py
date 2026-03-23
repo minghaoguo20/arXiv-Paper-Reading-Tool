@@ -155,7 +155,7 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
     """
     Get the compilation command for the given engine.
 
-    Uses latexmk for automatic multi-pass compilation.
+    Uses latexmk for automatic multi-pass compilation with BibTeX support.
 
     Args:
         engine: The TeX engine to use.
@@ -168,6 +168,8 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
         return [
             "latexmk",
             "-pdf",
+            "-bibtex",  # Always run BibTeX for bibliography processing
+            "-f",  # Force completion despite errors (warnings won't stop compilation)
             "-interaction=nonstopmode",
             "-file-line-error",
             tex_file,
@@ -176,6 +178,8 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
         return [
             "latexmk",
             "-xelatex",
+            "-bibtex",  # Always run BibTeX for bibliography processing
+            "-f",  # Force completion despite errors (warnings won't stop compilation)
             "-interaction=nonstopmode",
             "-file-line-error",
             tex_file,
@@ -314,6 +318,147 @@ def _font_to_package(font_name: str) -> str | None:
     # If no pattern matched, return the font name itself
     # (tlmgr might be able to find it)
     return font_name
+
+
+def parse_missing_fonts(output: str) -> list[str]:
+    """
+    Parse compiler output to find missing fonts.
+
+    Args:
+        output: Combined stdout/stderr from latex compilation.
+
+    Returns:
+        List of missing font names (e.g., ['cyberb8f', 'pcrr8t']).
+    """
+    missing_fonts = set()
+
+    # Pattern 1: pdfTeX error
+    # !pdfTeX error: pdflatex (file cyberb8f): Font cyberb8f at 1493 not found
+    for match in re.finditer(
+        r"pdflatex \(file ([^)]+)\): Font .+ not found", output
+    ):
+        font_name = match.group(1).strip()
+        missing_fonts.add(font_name)
+
+    # Pattern 2: mktexpk error
+    # mktexpk: don't know how to create bitmap font for cyberb8f
+    for match in re.finditer(
+        r"don't know how to create bitmap font for (\w+)", output
+    ):
+        font_name = match.group(1).strip()
+        missing_fonts.add(font_name)
+
+    # Pattern 3: TFM file not found
+    # ! I can't find file `cyberb8f.tfm'
+    for match in re.finditer(r"! I can't find file `([^']+)\.tfm'", output):
+        font_name = match.group(1).strip()
+        missing_fonts.add(font_name)
+
+    # Pattern 4: Font not found (generic)
+    # Font cyberb8f at 1493 not found
+    for match in re.finditer(r"Font (\w+) at \d+ not found", output):
+        font_name = match.group(1).strip()
+        missing_fonts.add(font_name)
+
+    return list(missing_fonts)
+
+
+def infer_font_encoding(font_name: str) -> str:
+    """
+    Infer LaTeX font encoding from font name.
+
+    Args:
+        font_name: Font file name (e.g., 'cyberb8f', 'pcrr8t').
+
+    Returns:
+        LaTeX encoding name (e.g., 'LGR', 'T1', 'OT1').
+    """
+    # CB Greek fonts (cyber*, grmn*, grml*)
+    if font_name.startswith(("cyber", "grmn", "grml")):
+        return "LGR"
+
+    # T1 encoded fonts
+    if font_name.startswith(("pcr", "ptm", "phv", "ec", "ntx", "ptm")):
+        return "T1"
+
+    # OMS encoding (math symbols)
+    if font_name.startswith(("cmsy", "cmex")):
+        return "OMS"
+
+    # Default to OT1 (Computer Modern)
+    return "OT1"
+
+
+def generate_font_fallback(font_name: str) -> str:
+    """
+    Generate LaTeX font fallback declaration for a missing font.
+
+    Args:
+        font_name: Missing font name (e.g., 'cyberb8f').
+
+    Returns:
+        LaTeX code declaring font substitutions.
+    """
+    encoding = infer_font_encoding(font_name)
+
+    # Extract font family (usually first 3-4 characters)
+    # cyberb8f -> cyber, pcrr8t -> pcr
+    if len(font_name) >= 3:
+        family = font_name[:4] if font_name[:4].isalpha() else font_name[:3]
+    else:
+        family = font_name
+
+    # Generate fallback declarations
+    fallback = f"""
+% === Font fallback for {font_name} (auto-added) ===
+\\DeclareFontFamily{{{encoding}}}{{{family}}}{{}}
+\\DeclareFontShape{{{encoding}}}{{{family}}}{{m}}{{n}}{{<->ssub*cmr/m/n}}{{}}
+\\DeclareFontShape{{{encoding}}}{{{family}}}{{m}}{{it}}{{<->ssub*cmr/m/it}}{{}}
+\\DeclareFontShape{{{encoding}}}{{{family}}}{{m}}{{sl}}{{<->ssub*cmr/m/sl}}{{}}
+\\DeclareFontShape{{{encoding}}}{{{family}}}{{b}}{{n}}{{<->ssub*cmr/bx/n}}{{}}
+\\DeclareFontShape{{{encoding}}}{{{family}}}{{bx}}{{n}}{{<->ssub*cmr/bx/n}}{{}}
+\\DeclareFontShape{{{encoding}}}{{{family}}}{{bx}}{{it}}{{<->ssub*cmr/bx/it}}{{}}
+"""
+    return fallback
+
+
+def add_font_fallbacks_to_file(main_tex: Path, font_names: list[str]) -> None:
+    """
+    Add font fallback declarations to main tex file.
+
+    Args:
+        main_tex: Path to main tex file.
+        font_names: List of missing font names to add fallbacks for.
+    """
+    if not font_names:
+        return
+
+    try:
+        content = main_tex.read_text(encoding="utf-8")
+
+        # Build all fallback declarations
+        fallbacks = "\n% === Dynamic Font Fallbacks (auto-added) ===\n"
+        for font_name in font_names:
+            fallbacks += generate_font_fallback(font_name)
+        fallbacks += "% === End Dynamic Fallbacks ===\n\n"
+
+        # Insert after \begin{document}
+        # This ensures fallbacks are loaded after all packages
+        doc_begin_match = re.search(r"(\\begin\{document\})", content)
+        if doc_begin_match:
+            insert_pos = doc_begin_match.start()
+            content = content[:insert_pos] + fallbacks + content[insert_pos:]
+            main_tex.write_text(content, encoding="utf-8")
+        else:
+            # Fallback: insert near the top after \documentclass
+            doc_class_match = re.search(r"(\\documentclass[^\n]*\n)", content)
+            if doc_class_match:
+                insert_pos = doc_class_match.end()
+                content = content[:insert_pos] + fallbacks + content[insert_pos:]
+                main_tex.write_text(content, encoding="utf-8")
+
+    except Exception as e:
+        print(f"  Warning: Failed to add font fallbacks: {e}")
 
 
 def install_packages(packages: list[str]) -> bool:

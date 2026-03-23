@@ -119,6 +119,20 @@ def _add_pdflatex_cjk_support(
         cjk_config = rf"""
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{CJKutf8}}
+
+% === Font Fallback for pdfLaTeX (auto-added) ===
+% Prevent common font errors by mapping problematic fonts to Computer Modern
+% CB Greek fonts (cyber*) -> Computer Modern (for Greek letters in math)
+\DeclareFontFamily{{LGR}}{{cmr}}{{}}
+\DeclareFontShape{{LGR}}{{cmr}}{{m}}{{n}}{{<->ssub*cmr/m/n}}{{}}
+\DeclareFontShape{{LGR}}{{cmr}}{{m}}{{it}}{{<->ssub*cmr/m/it}}{{}}
+\DeclareFontShape{{LGR}}{{cmr}}{{m}}{{sl}}{{<->ssub*cmr/m/sl}}{{}}
+\DeclareFontShape{{LGR}}{{cmr}}{{b}}{{n}}{{<->ssub*cmr/bx/n}}{{}}
+\DeclareFontShape{{LGR}}{{cmr}}{{bx}}{{n}}{{<->ssub*cmr/bx/n}}{{}}
+\DeclareFontShape{{LGR}}{{cmr}}{{bx}}{{it}}{{<->ssub*cmr/bx/it}}{{}}
+% Suppress font substitution warnings
+\pdfsuppresswarningpagegroup=1
+
 % Translation style
 \definecolor{{transcolor}}{{gray}}{{0.4}}
 \newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
