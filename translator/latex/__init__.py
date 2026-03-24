@@ -1,6 +1,6 @@
 """LaTeX processing utilities."""
 
-from translator.latex.cjk import add_cjk_support
+from translator.latex.cjk import add_cjk_support, add_toc_lot_lof
 from translator.latex.engine import (
     TexEngine,
     add_font_fallbacks_to_file,
@@ -26,6 +26,7 @@ from translator.latex.parser import (
 
 __all__ = [
     "add_cjk_support",
+    "add_toc_lot_lof",
     "add_font_fallbacks_to_file",
     "TexEngine",
     "detect_engine",

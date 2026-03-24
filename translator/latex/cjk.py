@@ -216,3 +216,45 @@ def _add_watermark(
             return content
 
     return content[:insert_pos] + watermark_code + content[insert_pos:]
+
+
+def add_toc_lot_lof(content: str) -> str:
+    """
+    Add Table of Contents, List of Tables, and List of Figures at the end of document.
+
+    Uses \\phantomsection to ensure hyperref links to correct pages.
+    Each section starts on a new page with \\clearpage.
+
+    Skips insertion if any of these commands already exist in the document.
+    """
+    # Skip if TOC/LOT/LOF already exists
+    if re.search(r"\\tableofcontents\b", content):
+        return content
+    if re.search(r"\\listoftables\b", content):
+        return content
+    if re.search(r"\\listoffigures\b", content):
+        return content
+
+    toc_code = r"""
+% === Table of Contents, List of Tables/Figures (auto-added) ===
+\clearpage
+\tableofcontents
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{List of Tables}
+\listoftables
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{List of Figures}
+\listoffigures
+% === End TOC/LOT/LOF ===
+"""
+    # Find \end{document} and insert before it
+    end_doc_match = re.search(r"(\\end\{document\})", content)
+    if end_doc_match:
+        insert_pos = end_doc_match.start()
+        content = content[:insert_pos] + toc_code + "\n" + content[insert_pos:]
+
+    return content
