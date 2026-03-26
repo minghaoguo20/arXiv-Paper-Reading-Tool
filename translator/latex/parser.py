@@ -254,6 +254,8 @@ def parse_file_for_translation(
 
     current_para: list[str] = []
     in_document = not is_main_file  # If main file, wait for \begin{document}
+    after_maketitle = not is_main_file  # If main file, wait for \maketitle
+    in_abstract = False  # Track if we're inside abstract environment
 
     # Caption tasks for concurrent translation
     # (index, original_lines, task) - original_lines is a list for multi-line captions
@@ -312,8 +314,21 @@ def parse_file_for_translation(
             result_parts.append(line)
             continue
 
-        # If not in document body (preamble), just copy line
-        if not in_document:
+        # Track \maketitle - start translating after this
+        if r"\maketitle" in stripped:
+            after_maketitle = True
+            result_parts.append(line)
+            continue
+
+        # Track abstract environment (should translate even before \maketitle)
+        if r"\begin{abstract}" in stripped:
+            in_abstract = True
+        if r"\end{abstract}" in stripped:
+            in_abstract = False
+
+        # If not in document body (preamble) or before \maketitle, just copy line
+        # Exception: translate content inside abstract environment
+        if not in_document or (not after_maketitle and not in_abstract):
             result_parts.append(line)
             continue
 

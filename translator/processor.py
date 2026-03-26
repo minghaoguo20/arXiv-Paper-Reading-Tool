@@ -13,7 +13,8 @@ from translator.arxiv import get_arxiv_metadata
 from translator.latex import (
     TexEngine,
     add_cjk_support,
-    add_toc_lot_lof,
+    add_lot_lof,
+    add_toc,
     add_font_fallbacks_to_file,
     assemble_translated_file,
     detect_engine,
@@ -382,9 +383,10 @@ def _process_with_engine(
 
     # Add TOC/LOT/LOF if enabled (after translation, before compile)
     if cfg and cfg.toc:
-        print("Adding Table of Contents, List of Tables/Figures...")
+        print("Adding List of Tables/Figures and Table of Contents...")
         main_content = main_tex.read_text(encoding="utf-8")
-        main_content = add_toc_lot_lof(main_content)
+        main_content = add_toc(main_content)  # TOC before LOT/LOF
+        main_content = add_lot_lof(main_content)  # LOT/LOF at end
         main_tex.write_text(main_content, encoding="utf-8")
 
     # === Phase 4: Compile ===
