@@ -89,6 +89,20 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
         refs_map[placeholder] = match
         text = text.replace(match, placeholder, 1)
 
+    # Extract and replace \(...\) inline math with unique placeholders
+    inline_paren_matches = re.findall(r"\\\(.*?\\\)", text, re.DOTALL)
+    for match in inline_paren_matches:
+        placeholder = f"[MATH_{len(refs_map)}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
+    # Extract and replace \[...\] display math with unique placeholders
+    display_bracket_matches = re.findall(r"\\\[.*?\\\]", text, re.DOTALL)
+    for match in display_bracket_matches:
+        placeholder = f"[MATH_{len(refs_map)}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
     # Extract and replace \cite commands with unique placeholders
     cite_matches = re.findall(r"~?\\cite[pt]?\{[^}]*\}", text)
     for i, match in enumerate(cite_matches):
@@ -324,19 +338,25 @@ def parse_file_for_translation(
         if r"\begin{abstract}" in stripped:
             in_abstract = True
         if r"\end{abstract}" in stripped:
+            flush_paragraph()  # Process accumulated content before leaving abstract
             in_abstract = False
+            # Also mark as after_maketitle since abstract typically follows title
+            # This handles templates that don't use \maketitle (e.g., ICML \twocolumn[...])
+            after_maketitle = True
 
         # If not in document body (preamble) or before \maketitle, just copy line
         # Exception: translate content inside abstract environment
-        if not in_document or (not after_maketitle and not in_abstract):
+        if not in_abstract and (not in_document or not after_maketitle):
             result_parts.append(line)
             continue
 
         # Track environment depth
         for env in all_envs:
-            if re.search(r"\\begin\{" + env + r"\*?\}", stripped):
+            # Escape env name for regex (e.g., "figure*" -> "figure\*")
+            env_pattern = re.escape(env)
+            if re.search(r"\\begin\{" + env_pattern + r"\}", stripped):
                 env_depth[env] += 1
-            if re.search(r"\\end\{" + env + r"\*?\}", stripped):
+            if re.search(r"\\end\{" + env_pattern + r"\}", stripped):
                 env_depth[env] = max(0, env_depth[env] - 1)
 
         # If in skip environment, handle specially

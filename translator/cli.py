@@ -19,7 +19,7 @@ class Config:
     # Translation model (use "debug" for mock translation without API)
     model: str = "gpt-5-nano"
     # Maximum concurrent API calls
-    max_workers: int = 20
+    max_workers: int = 30
     # Continue from previous translation (reuse cached translations)
     resume: bool = False
     # LaTeX engine: auto (XeLaTeX with pdfLaTeX fallback), xelatex, or pdflatex
