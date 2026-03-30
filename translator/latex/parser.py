@@ -82,26 +82,41 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
     """
     refs_map: dict[str, str] = {}
 
+    # Placeholder for escaped dollar signs to prevent false matches
+    ESCAPED_DOLLAR_PLACEHOLDER = "\x00DOLLAR\x00"
+
+    # Protect escaped dollar signs (\$) before extraction
+    text = text.replace(r"\$", ESCAPED_DOLLAR_PLACEHOLDER)
+
     # Extract and replace inline math $...$ with unique placeholders
     math_matches = re.findall(r"\$[^$]+\$", text)
     for i, match in enumerate(math_matches):
+        # Restore escaped dollars within the match
+        original_match = match.replace(ESCAPED_DOLLAR_PLACEHOLDER, r"\$")
         placeholder = f"[MATH_{i}]"
-        refs_map[placeholder] = match
+        refs_map[placeholder] = original_match
         text = text.replace(match, placeholder, 1)
 
     # Extract and replace \(...\) inline math with unique placeholders
     inline_paren_matches = re.findall(r"\\\(.*?\\\)", text, re.DOTALL)
     for match in inline_paren_matches:
+        # Restore escaped dollars within the match
+        original_match = match.replace(ESCAPED_DOLLAR_PLACEHOLDER, r"\$")
         placeholder = f"[MATH_{len(refs_map)}]"
-        refs_map[placeholder] = match
+        refs_map[placeholder] = original_match
         text = text.replace(match, placeholder, 1)
 
     # Extract and replace \[...\] display math with unique placeholders
     display_bracket_matches = re.findall(r"\\\[.*?\\\]", text, re.DOTALL)
     for match in display_bracket_matches:
+        # Restore escaped dollars within the match
+        original_match = match.replace(ESCAPED_DOLLAR_PLACEHOLDER, r"\$")
         placeholder = f"[MATH_{len(refs_map)}]"
-        refs_map[placeholder] = match
+        refs_map[placeholder] = original_match
         text = text.replace(match, placeholder, 1)
+
+    # Restore escaped dollars in remaining text
+    text = text.replace(ESCAPED_DOLLAR_PLACEHOLDER, r"\$")
 
     # Extract and replace \cite commands with unique placeholders
     cite_matches = re.findall(r"~?\\cite[pt]?\{[^}]*\}", text)
