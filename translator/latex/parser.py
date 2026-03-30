@@ -365,6 +365,12 @@ def parse_file_for_translation(
             result_parts.append(line)
             continue
 
+        # Comment line - skip environment tracking for comments
+        if stripped.startswith("%"):
+            flush_paragraph()
+            result_parts.append(line)
+            continue
+
         # Track environment depth
         for env in all_envs:
             # Escape env name for regex (e.g., "figure*" -> "figure\*")
@@ -438,20 +444,14 @@ def parse_file_for_translation(
             result_parts.append(line)
             continue
 
-        # Check for section headers
-        if re.match(r"\\(section|subsection|subsubsection)\{", stripped):
+        # Check for section headers (including starred versions like \section*)
+        if re.match(r"\\(section|subsection|subsubsection|paragraph)\*?\{", stripped):
             flush_paragraph()
             result_parts.append(line)
             continue
 
         # Empty line = paragraph break
         if not stripped:
-            flush_paragraph()
-            result_parts.append(line)
-            continue
-
-        # Comment line
-        if stripped.startswith("%"):
             flush_paragraph()
             result_parts.append(line)
             continue
