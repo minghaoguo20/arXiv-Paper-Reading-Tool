@@ -18,6 +18,8 @@ class Config:
     input: str = ""
     # Translation model (use "debug" for mock translation without API)
     model: str = "gpt-5-nano"
+    # Target language for translation (e.g., Chinese, Japanese, Korean, German)
+    target_lang: str = "Chinese"
     # Maximum concurrent API calls
     max_workers: int = 30
     # Continue from previous translation (reuse cached translations)
@@ -58,6 +60,15 @@ LaTeX Paper Translator - Common Commands:
   # From local archive
   python -m translator --input tex/paper.tar.gz
 
+  # Use configuration file (recommended)
+  python -m translator --config_path translator/config/default.yaml --input 2307.16789
+
+  # CLI parameters override config file settings
+  python -m translator --config_path translator/config/default.yaml --input 2307.16789 --model gpt-4.1-mini --target_lang Japanese
+
+  # Specify target language directly
+  python -m translator --input 2307.16789 --target_lang Korean
+
   # Debug mode (mock translation, no API needed)
   python -m translator --input 2307.16789 --model x
 
@@ -67,7 +78,7 @@ LaTeX Paper Translator - Common Commands:
   # Resume interrupted translation (reuse cached translations)
   python -m translator --input 2307.16789 --resume true
 
-  # Adjust concurrency (default: 10)
+  # Adjust concurrency (default: 30)
   python -m translator --input 2307.16789 --max_workers 20
 
   # Force specific LaTeX engine (default: auto)
@@ -77,13 +88,23 @@ LaTeX Paper Translator - Common Commands:
   # Add Table of Contents, List of Tables, List of Figures
   python -m translator --input 2307.16789 --toc true
 
+Configuration Files:
+  Available config files:
+    - translator/config/default.yaml  (default template with detailed comments)
+
+  Create your own config:
+    cp translator/config/default.yaml my_config.yaml
+    python -m translator --config_path my_config.yaml --input 2307.16789
+
+  Priority: CLI parameters > Config file > Default values
+
 Environment:
   ONE_API    API key for OpenAI-compatible service (required unless --model x/debug/none)
 """
     print(examples)
 
 
-@draccus.wrap()
+@draccus.wrap(config_path="translator/config/default.yaml")
 def main(cfg: Config):
     """Main entry point."""
     # Show help if no input
@@ -97,6 +118,8 @@ def main(cfg: Config):
         print("Debug mode: using mock translation")
     else:
         print(f"Using model: {cfg.model}")
+
+    print(f"Target language: {cfg.target_lang}")
 
     # Check if input is an arXiv reference (ID or URL)
     arxiv_id = parse_arxiv_input(input_arg)

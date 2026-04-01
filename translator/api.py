@@ -41,12 +41,17 @@ def get_config() -> "Config | None":
     return Config._instance
 
 
-def translate(text: str, target_lang: str = "Chinese", max_retries: int = 3) -> str:
+def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -> str:
     """Translate text using OpenAI-compatible API with retry."""
     if not text.strip():
         return ""
 
     cfg = get_config()
+
+    # Use target_lang from config if not explicitly provided
+    if target_lang is None:
+        target_lang = cfg.target_lang if cfg else "Chinese"
+
     if cfg and cfg.debug_mode:
         # Return mock translation for testing (pure Chinese, no special chars)
         clean = re.sub(r"\\[a-zA-Z]+(\{[^}]*\}|\[[^\]]*\])*", "", text)

@@ -1,0 +1,40 @@
+# LaTeX Paper Translator - Default Configuration
+# LaTeX 论文翻译工具 - 默认配置
+#
+# Usage / 使用方法:
+#   python translate.py --config_path translator/config/default.yaml --input <arxiv_id>
+#
+# Priority / 优先级:
+#   CLI parameters > Config file > Default values
+#   命令行参数 > 配置文件 > 默认值
+
+# Translation model / 翻译模型
+# Options: gpt-4o-mini, gpt-5-nano, or "x"/"debug"/"none" for testing without API
+# 可选项: gpt-4o-mini, gpt-5-nano, 或使用 "x"/"debug"/"none" 进行无 API 测试
+model: gpt-4o-mini
+
+# Target language / 目标语言
+# Options: Chinese, Japanese, Korean, German, French, Spanish, etc.
+# 可选项: Chinese (中文), Japanese (日语), German (德语), French (法语), Spanish (西班牙语) 等
+# 暂时有问题：Korean (韩语)
+target_lang: Chinese
+
+# Maximum concurrent API requests / 最大并发 API 请求数
+# Adjust based on your API rate limits (typical: 10-50)
+# 根据 API 速率限制调整（通常: 10-50）
+max_workers: 30
+
+# LaTeX compilation engine / LaTeX 编译引擎
+# Options: auto (XeLaTeX with pdfLaTeX fallback), xelatex, pdflatex
+# 可选项: auto (XeLaTeX，失败时回退到 pdfLaTeX), xelatex, pdflatex
+engine: auto
+
+# Add Table of Contents and Lists / 添加目录和图表列表
+# Adds TOC (Table of Contents), LOT (List of Tables), LOF (List of Figures) after \maketitle
+# 在 \maketitle 后添加目录、表格列表、图片列表
+toc: true
+
+# Resume from previous translation / 断点续翻（复用缓存）
+# Reuse cached translations from previous runs
+# 复用之前运行的翻译缓存
+resume: false

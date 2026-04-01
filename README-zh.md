@@ -93,6 +93,45 @@ python translate.py --input tex/arXiv-2511.05271v4
 python translate.py --input tex/paper.tar.gz
 ```
 
+### 使用配置文件（推荐）
+
+配置文件让您可以方便地管理不同语言的翻译设置。
+
+```bash
+# 使用默认配置文件（推荐）
+python translate.py --config_path translator/config/default.yaml --input 2307.16789
+
+# 使用预设的语言配置
+python translate.py --config_path config/japanese.yaml --input 2307.16789
+python translate.py --config_path config/korean.yaml --input 2307.16789
+python translate.py --config_path config/german.yaml --input 2307.16789
+python translate.py --config_path config/chinese.yaml --input 2307.16789
+```
+
+**可用的配置文件：**
+
+- `translator/config/default.yaml` - 默认配置模板（详细注释说明）
+- `config/chinese.yaml` - 中文翻译预设
+- `config/japanese.yaml` - 日语翻译预设
+- `config/korean.yaml` - 韩语翻译预设
+- `config/german.yaml` - 德语翻译预设
+
+**参数优先级：**
+
+命令行参数 > 配置文件 > 默认值
+
+```bash
+# CLI 参数会覆盖配置文件中的设置
+python translate.py --config_path translator/config/default.yaml --input 2307.16789 --model gpt-4.1-mini --target_lang Japanese
+
+# 不使用配置文件，直接指定目标语言
+python translate.py --input 2307.16789 --target_lang Korean
+
+# 自定义配置文件（复制 default.yaml 并修改）
+cp translator/config/default.yaml my_config.yaml
+python translate.py --config_path my_config.yaml --input 2307.16789
+```
+
 ## 常用选项
 
 ### 测试模式（不调用 API）
@@ -179,8 +218,10 @@ tex/
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
+| `--config_path` | - | 配置文件路径（支持 YAML/JSON 格式） |
 | `--input` | (必填) | 输入源：arXiv ID、URL、本地目录或压缩包 |
 | `--model` | `gpt-5-nano` | 翻译模型，使用 `x` 启用测试模式 |
+| `--target_lang` | `Chinese` | 目标语言：`Chinese`、`Japanese`、`Korean`、`German` 等 |
 | `--max_workers` | `30` | 最大并发 API 请求数 |
 | `--resume` | `false` | 断点续翻，复用已缓存的翻译 |
 | `--engine` | `auto` | LaTeX 引擎：`auto`、`xelatex`、`pdflatex` |
