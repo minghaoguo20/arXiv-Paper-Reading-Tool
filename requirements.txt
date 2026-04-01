@@ -1,3 +1,4 @@
 requests
 tqdm
 draccus
+python-dotenv

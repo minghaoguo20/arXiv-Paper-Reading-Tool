@@ -46,13 +46,33 @@ tlmgr install cjk ctex xecjk fontspec
 
 #### 3. 环境变量
 
+支持两种配置方式：
+
+**方式 1：使用 .env 文件（推荐）**
+
+```bash
+# 复制模板文件
+cp .env.example .env
+
+# 编辑 .env 文件，填入你的 API Key
+# ONE_API=your-api-key-here
+# API_URL=https://api.openai.com/v1/chat/completions
+```
+
+**方式 2：直接导出环境变量**
+
 ```bash
 # 翻译 API Key（必需，除非使用测试模式）
 export ONE_API="your-api-key"
 
 # 自定义 API 地址（可选）
-export API_URL="https://api.bltcy.ai/v1/chat/completions"
+export API_URL="https://api.openai.com/v1/chat/completions"
 ```
+
+> **说明**：
+> - `ONE_API`：翻译 API 密钥，从服务商获取
+> - `API_URL`：API 端点地址，需兼容 OpenAI 格式（可选，已有默认值）
+> - 两种配置方式任选其一，`.env` 文件方式更便于管理
 
 ### 基本用法
 

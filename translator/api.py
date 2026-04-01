@@ -42,7 +42,7 @@ def get_config() -> "Config | None":
 
 
 def translate(text: str, target_lang: str = "Chinese", max_retries: int = 3) -> str:
-    """Translate text using bltcy.ai API with retry."""
+    """Translate text using OpenAI-compatible API with retry."""
     if not text.strip():
         return ""
 
@@ -59,7 +59,7 @@ def translate(text: str, target_lang: str = "Chinese", max_retries: int = 3) -> 
     api_key = os.environ.get("ONE_API")
     if not api_key:
         raise ValueError("ONE_API environment variable is required")
-    api_url = os.environ.get("API_URL", "https://api.bltcy.ai/v1/chat/completions")
+    api_url = os.environ.get("API_URL", "https://api.openai.com/v1/chat/completions")
     model_name = cfg.model if cfg else "gpt-5-nano"
     headers = {
         "Accept": "application/json",

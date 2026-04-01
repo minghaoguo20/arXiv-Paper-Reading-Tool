@@ -28,7 +28,7 @@ Examples:
     python translate.py --input 2307.16789 --resume true
 
 Environment:
-    ONE_API - API key for bltcy.ai (required unless --model x/debug/none)
+    ONE_API - API key for OpenAI-compatible service (required unless --model x/debug/none)
 """
 
 from translator import main
