@@ -229,6 +229,7 @@ def add_toc(content: str) -> str:
 
     toc_code = r"""
 % === Table of Contents (auto-added) ===
+\clearpage
 \phantomsection
 \tableofcontents
 % === End TOC ===

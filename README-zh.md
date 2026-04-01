@@ -1,6 +1,8 @@
-# LaTeX 论文翻译工具
+# arXiv 论文翻译工具
 
-将 arXiv 论文的 LaTeX 源文件翻译为中英双语 PDF。
+[English](README.md) | [中文](README-zh.md)
+
+将 arXiv 论文翻译为双语 PDF。
 
 ## 功能特性
 
@@ -13,9 +15,22 @@
 - **缺失包自动安装**：编译时自动检测并安装缺失的 LaTeX 包
 - **arXiv 元数据水印**：自动获取 arXiv 论文的发布日期和分类，添加到 PDF 右上角
 - **目录生成**：可选添加目录（TOC）、表格列表（LOT）、图片列表（LOF）
-- **断点续翻**：支持中断后继续翻译，复用已缓存的结果
+- **断点续翻**：支持中断后继续翻译,复用已缓存的结果
+
+## 重要说明
+
+**兼容性限制**：由于 arXiv 论文的 LaTeX 格式多样，本工具无法保证：
+- 所有论文都能成功翻译和编译
+- 翻译后的排版完全符合预期
+- 特殊内容（复杂数学环境、自定义宏等）的完整处理
+
+**实际效果**：对于大部分标准格式的论文，翻译质量可达到不影响阅读的水平。
+
+**问题反馈**：遇到无法处理的论文时，欢迎提交 Issue 并附上 arXiv 链接，帮助我们持续改进。
 
 ## 快速开始
+
+> **注意**：本项目目前仅在 macOS 上进行过测试。Linux 系统理论上兼容，Windows 用户可能需要调整部分安装步骤。
 
 ### 安装
 
@@ -23,11 +38,6 @@
 
 ```bash
 pip install -r requirements.txt
-```
-
-或手动安装：
-```bash
-pip install requests tqdm draccus
 ```
 
 #### 2. LaTeX 编译器
@@ -77,44 +87,21 @@ export API_URL="https://api.openai.com/v1/chat/completions"
 ### 基本用法
 
 ```bash
-# 从 arXiv 下载并翻译（推荐）
+# 从 arXiv 下载并翻译
 python translate.py --input 2307.16789
-
-# 指定 arXiv 版本
 python translate.py --input 2307.16789v2
-
-# 使用 arXiv URL
 python translate.py --input https://arxiv.org/abs/2307.16789
 
-# 翻译本地目录
+# 指定本地目录
 python translate.py --input tex/arXiv-2511.05271v4
-
-# 翻译本地压缩包
 python translate.py --input tex/paper.tar.gz
 ```
 
-### 使用配置文件（推荐）
-
-配置文件让您可以方便地管理不同语言的翻译设置。
-
-```bash
-# 使用默认配置文件（推荐）
-python translate.py --config_path translator/config/default.yaml --input 2307.16789
-
-# 使用预设的语言配置
-python translate.py --config_path config/japanese.yaml --input 2307.16789
-python translate.py --config_path config/korean.yaml --input 2307.16789
-python translate.py --config_path config/german.yaml --input 2307.16789
-python translate.py --config_path config/chinese.yaml --input 2307.16789
-```
+### 配置文件
 
 **可用的配置文件：**
 
 - `translator/config/default.yaml` - 默认配置模板（详细注释说明）
-- `config/chinese.yaml` - 中文翻译预设
-- `config/japanese.yaml` - 日语翻译预设
-- `config/korean.yaml` - 韩语翻译预设
-- `config/german.yaml` - 德语翻译预设
 
 **参数优先级：**
 
@@ -124,7 +111,7 @@ python translate.py --config_path config/chinese.yaml --input 2307.16789
 # CLI 参数会覆盖配置文件中的设置
 python translate.py --config_path translator/config/default.yaml --input 2307.16789 --model gpt-4.1-mini --target_lang Japanese
 
-# 不使用配置文件，直接指定目标语言
+# 使用默认配置文件，并直接指定目标语言
 python translate.py --input 2307.16789 --target_lang Korean
 
 # 自定义配置文件（复制 default.yaml 并修改）
@@ -133,6 +120,12 @@ python translate.py --config_path my_config.yaml --input 2307.16789
 ```
 
 ## 常用选项
+
+### 默认模式
+
+```bash
+python translate.py --input 2307.16789
+```
 
 ### 测试模式（不调用 API）
 
@@ -227,26 +220,6 @@ tex/
 | `--engine` | `auto` | LaTeX 引擎：`auto`、`xelatex`、`pdflatex` |
 | `--toc` | `true` | 在文档末尾添加目录和图表列表（TOC/LOT/LOF） |
 
-## 翻译示例
-
-翻译后的 LaTeX 格式：
-
-```latex
-Large Language Models (LLMs) have emerged as a pivotal
-breakthrough in natural language processing (NLP).
-
-\trans{大型语言模型（LLMs）已成为自然语言处理（NLP）领域的重要突破。}
-
-\begin{figure}
-    \caption{Overview of our approach.}
-    \trans{我们方法的概览。}
-\end{figure}
-```
-
-PDF 显示效果：
-- **原文**：正常黑色，正常大小
-- **翻译**：灰色小字，显示在原文下方
-
 ## 常见问题
 
 ### Q: 编译失败怎么办？
@@ -279,16 +252,27 @@ export API_URL="https://your-api-endpoint/v1/chat/completions"
 - 跳过已缓存的段落
 - 只翻译新增或修改的段落
 
-### Q: 如何自定义跳过某些文件？
+### Q: 如何手动编译 PDF？
 
-修改 `translator/processor.py` 中的 `is_preamble_file()` 函数，添加文件名模式。
+如果自动编译失败或需要手动调整，可以在翻译输出目录（`tex/arXiv-{id}_bilingual/`）中使用以下命令：
 
-## 技术文档
+**方法 1：使用 XeLaTeX（推荐，更好的中文支持）**
 
-详细的实现原理和技术细节请参考：
+```bash
+latexmk -xelatex -bibtex -f -interaction=nonstopmode -file-line-error main.tex
+```
 
-- **[实现细节](docs/IMPLEMENTATION.md)** - 架构、工作流程、翻译规则、自动修复机制
-- **[Bug 记录](docs/bugs.md)** - 已修复的问题和新功能
+**方法 2：使用 pdfLaTeX（兼容性更好）**
+
+```bash
+latexmk -pdf -bibtex -f -interaction=nonstopmode -file-line-error main.tex
+```
+
+> **提示**：
+> - `-f`：遇到错误继续编译
+> - `-interaction=nonstopmode`：不暂停等待用户输入
+> - `-bibtex`：自动处理参考文献
+> - 编译结果会生成 `main.pdf`
 
 ## 许可证
 
