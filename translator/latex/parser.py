@@ -132,6 +132,57 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
         refs_map[placeholder] = match
         text = text.replace(match, placeholder, 1)
 
+    # Extract and replace \textcolor{color}{text} commands with unique placeholders
+    # This handles commands like \textcolor{blue!70}{text} where color can contain !
+    def extract_textcolor(text: str) -> list[str]:
+        """Extract all \textcolor{...}{...} commands handling nested braces."""
+        matches = []
+        pattern = r"\\textcolor\{"
+        pos = 0
+        while True:
+            match = re.search(pattern, text[pos:])
+            if not match:
+                break
+            start = pos + match.start()
+            # Find the first argument (color)
+            brace_start = pos + match.end()
+            depth = 1
+            i = brace_start
+            while i < len(text) and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                i += 1
+            if depth != 0:
+                break  # Unbalanced braces
+            color_end = i
+            # Find the second argument (text content)
+            if color_end >= len(text) or text[color_end] != "{":
+                pos = color_end
+                continue
+            depth = 1
+            i = color_end + 1
+            while i < len(text) and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                i += 1
+            if depth != 0:
+                break  # Unbalanced braces
+            # Extract the full command
+            full_match = text[start:i]
+            matches.append(full_match)
+            pos = i
+        return matches
+
+    textcolor_matches = extract_textcolor(text)
+    for i, match in enumerate(textcolor_matches):
+        placeholder = f"[TEXTCOLOR_{i}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
     # Extract and replace no-arg macros (e.g., \model, \dataset, \LaTeX)
     # Match \xxx not followed by { or letter (to avoid \textbf{...} etc.)
     macro_matches = list(set(re.findall(r"\\[a-zA-Z]+(?![{a-zA-Z])", text)))
