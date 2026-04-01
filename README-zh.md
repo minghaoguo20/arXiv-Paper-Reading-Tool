@@ -97,7 +97,7 @@ python translate.py --input tex/arXiv-2511.05271v4
 python translate.py --input tex/paper.tar.gz
 ```
 
-### 配置文件
+### 配置文件（可选）
 
 **可用的配置文件：**
 
