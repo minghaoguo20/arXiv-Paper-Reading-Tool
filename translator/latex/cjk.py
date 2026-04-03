@@ -134,6 +134,9 @@ def _add_pdflatex_cjk_support(
 % Suppress font substitution warnings
 \pdfsuppresswarningpagegroup=1
 
+% Auto-close CJK environment at document end (for TOC/LOF/LOT support)
+\AtEndDocument{{\end{{CJK}}}}
+
 % Translation style
 \definecolor{{transcolor}}{{gray}}{{0.4}}
 \newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
@@ -157,16 +160,8 @@ def _add_pdflatex_cjk_support(
             main_tex_content[:insert_pos] + cjk_begin + main_tex_content[insert_pos:]
         )
 
-    # Add \end{CJK} before \end{document}
-    doc_end_match = re.search(r"(\\end\{document\})", main_tex_content)
-    if doc_end_match:
-        cjk_end = r"""
-\end{CJK}
-"""
-        insert_pos = doc_end_match.start()
-        main_tex_content = (
-            main_tex_content[:insert_pos] + cjk_end + main_tex_content[insert_pos:]
-        )
+    # Note: \end{CJK} is now automatically added by \AtEndDocument hook in preamble
+    # This ensures TOC/LOF/LOT commands are within CJK environment
 
     # Add watermark code after \begin{document} and CJK begin if metadata is provided
     if arxiv_id and published_date:

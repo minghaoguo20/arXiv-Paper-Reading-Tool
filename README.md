@@ -17,6 +17,8 @@ Translate arXiv paper into bilingual PDFs.
 - **Table of Contents Generation**: Optional addition of TOC, List of Tables (LOT), and List of Figures (LOF)
 - **Resume Translation**: Supports resuming interrupted translations, reusing cached results
 
+![example](example/example.png)
+
 ## Important Notes
 
 **Compatibility Limitations**: Due to the diverse LaTeX formats used in arXiv papers, this tool cannot guarantee:
