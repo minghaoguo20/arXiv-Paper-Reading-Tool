@@ -501,6 +501,25 @@ def parse_file_for_translation(
             result_parts.append(line)
             continue
 
+        # Check for list environment boundaries - treat as paragraph delimiters so that
+        # \begin{enumerate}/\end{enumerate} are never swallowed into a paragraph and end
+        # up missing from the output (they cannot legally live inside \trans{}).
+        if re.search(r"\\(?:begin|end)\{(?:enumerate|itemize|description)\*?\}", stripped):
+            flush_paragraph()
+            result_parts.append(line)
+            continue
+
+        # Check for \item - flush current paragraph, emit the \item marker alone, then
+        # start accumulating the item body so each item gets its own \trans{} block.
+        item_match = re.match(r"^(\s*\\item(?:\[[^\]]*\])?)\s*(.*)", line, re.DOTALL)
+        if item_match:
+            flush_paragraph()
+            result_parts.append(item_match.group(1))  # emit "    \item" (with indent)
+            item_body = item_match.group(2).strip()
+            if item_body:
+                current_para.append(item_body)  # start new paragraph for item content
+            continue
+
         # Empty line = paragraph break
         if not stripped:
             flush_paragraph()
