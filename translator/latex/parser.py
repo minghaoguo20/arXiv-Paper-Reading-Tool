@@ -191,8 +191,8 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
         refs_map[placeholder] = match
         text = text.replace(match, placeholder)
 
-    # Remove comments (% preceded by space or at line start, not percentages like 15%)
-    text = re.sub(r"(?<!\d)%.*", "", text)
+    # Remove comments (% not preceded by digit or backslash - avoids matching 15% or \%)
+    text = re.sub(r"(?<![\d\\])%.*", "", text)
     # Remove \begin{...}[options] and \end{...}
     text = re.sub(r"\\begin\{[^}]+\}(\[[^\]]*\])?", "", text)
     text = re.sub(r"\\end\{[^}]+\}", "", text)
@@ -309,6 +309,7 @@ def parse_file_for_translation(
         "figure*",        # Two-column figure
         "table",
         "table*",         # Two-column table
+        "wraptable",      # Wrap table (from wrapfig package)
         "longtable",      # Long tables (multi-page) - has caption inside
         "tabularx",       # Extended tabular - may have caption
         "tabulary",       # Auto-width tabular - may have caption
@@ -328,6 +329,7 @@ def parse_file_for_translation(
         "center",
         "tcolorbox",
         "tikzpicture",
+        "thebibliography",  # Bibliography: contains \bibitem and TeX commands, not translatable
     ]
     all_envs = caption_envs + skip_envs
     env_depth = {env: 0 for env in all_envs}
@@ -498,7 +500,26 @@ def parse_file_for_translation(
         # Check for section headers (including starred versions like \section*)
         if re.match(r"\\(section|subsection|subsubsection|paragraph)\*?\{", stripped):
             flush_paragraph()
-            result_parts.append(line)
+            # Find end of the command's argument (accounting for nested braces),
+            # so that any inline text after the closing brace can be accumulated
+            # for translation (e.g. \paragraph{Title} Some inline text here.).
+            depth = 0
+            cmd_end = -1
+            for _i, _ch in enumerate(line):
+                if _ch == "{":
+                    depth += 1
+                elif _ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        cmd_end = _i + 1
+                        break
+            if cmd_end > 0 and cmd_end < len(line):
+                trailing = line[cmd_end:].strip()
+                result_parts.append(line[:cmd_end])
+                if trailing:
+                    current_para.append(trailing)
+            else:
+                result_parts.append(line)
             continue
 
         # Check for list environment boundaries - treat as paragraph delimiters so that
