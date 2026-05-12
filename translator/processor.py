@@ -326,18 +326,6 @@ def _process_with_engine(
     english_only = cfg and cfg.english_only_mode
 
     if not english_only:
-        # Add CJK support
-        print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
-        main_content = main_tex.read_text(encoding="utf-8")
-        main_content = add_cjk_support(
-            main_content,
-            engine=engine,
-            arxiv_id=metadata.get("arxiv_id") if metadata else None,
-            published_date=metadata.get("published") if metadata else None,
-            category=metadata.get("category") if metadata else None,
-        )
-        main_tex.write_text(main_content, encoding="utf-8")
-
         # Find included files
         visited: set[Path] = set()
         included_files = find_included_files(main_tex, output_dir, visited)
@@ -385,13 +373,25 @@ def _process_with_engine(
             final_content = assemble_translated_file(parse_result, translations)
             file_path.write_text(final_content, encoding="utf-8")
 
-        # Add TOC/LOT/LOF if enabled (after translation, before compile)
+        # Add TOC/LOT/LOF if enabled (after translation, before CJK wrapping)
         if cfg and cfg.toc:
             print("Adding List of Tables/Figures and Table of Contents...")
             main_content = main_tex.read_text(encoding="utf-8")
             main_content = add_toc(main_content)  # TOC before LOT/LOF
             main_content = add_lot_lof(main_content)  # LOT/LOF at end
             main_tex.write_text(main_content, encoding="utf-8")
+
+        # Add CJK support last so \end{CJK*} wraps TOC/LOF/LOT content
+        print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
+        main_content = main_tex.read_text(encoding="utf-8")
+        main_content = add_cjk_support(
+            main_content,
+            engine=engine,
+            arxiv_id=metadata.get("arxiv_id") if metadata else None,
+            published_date=metadata.get("published") if metadata else None,
+            category=metadata.get("category") if metadata else None,
+        )
+        main_tex.write_text(main_content, encoding="utf-8")
 
     # === Phase 4: Compile ===
     print(f"\nCompiling with {engine.value}...")

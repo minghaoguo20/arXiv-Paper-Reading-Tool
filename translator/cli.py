@@ -17,7 +17,7 @@ class Config:
     # Input source: arXiv ID (2307.16789), arXiv URL, local directory, or .tar.gz archive
     input: str = ""
     # Translation model (use "debug" for mock translation without API)
-    model: str = "gpt-5-nano"
+    model: str = "gpt-4.1-nano"
     # Target language for translation (e.g., Chinese, Japanese, Korean, German)
     target_lang: str = "Chinese"
     # Maximum concurrent API calls
@@ -27,7 +27,7 @@ class Config:
     # LaTeX engine: xelatex or pdflatex (default: auto-detect from document)
     engine: str = ""
     # Add Table of Contents, List of Tables, List of Figures after \maketitle
-    toc: bool = True
+    toc: bool = False
 
     _instance: "Config" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)

@@ -338,6 +338,7 @@ def parse_file_for_translation(
     in_document = not is_main_file  # If main file, wait for \begin{document}
     after_maketitle = not is_main_file  # If main file, wait for \maketitle
     in_abstract = False  # Track if we're inside abstract environment
+    pending_item_prefix: str | None = None  # pending \item prefix to prepend to first body line
 
     # Caption tasks for concurrent translation
     # (index, original_lines, task) - original_lines is a list for multi-line captions
@@ -355,12 +356,21 @@ def parse_file_for_translation(
 
     def flush_paragraph():
         """Process accumulated paragraph - collect task instead of translating."""
-        nonlocal current_para, next_task_id
+        nonlocal current_para, next_task_id, pending_item_prefix
         if not current_para:
+            if pending_item_prefix is not None:
+                result_parts.append(pending_item_prefix)
+                pending_item_prefix = None
             return
 
+        if pending_item_prefix is not None:
+            combined_lines = [pending_item_prefix + " " + current_para[0]] + current_para[1:]
+            pending_item_prefix = None
+        else:
+            combined_lines = current_para
+
         para_text = "\n".join(current_para)
-        result_parts.extend(current_para)
+        result_parts.extend(combined_lines)
 
         # Check if paragraph should be translated
         clean_para, refs_map = clean_for_translation(para_text)
@@ -530,12 +540,12 @@ def parse_file_for_translation(
             result_parts.append(line)
             continue
 
-        # Check for \item - flush current paragraph, emit the \item marker alone, then
-        # start accumulating the item body so each item gets its own \trans{} block.
+        # Check for \item - flush current paragraph, then accumulate the item body
+        # with the \item prefix stored so flush_paragraph can join them on one line.
         item_match = re.match(r"^(\s*\\item(?:\[[^\]]*\])?)\s*(.*)", line, re.DOTALL)
         if item_match:
             flush_paragraph()
-            result_parts.append(item_match.group(1))  # emit "    \item" (with indent)
+            pending_item_prefix = item_match.group(1)
             item_body = item_match.group(2).strip()
             if item_body:
                 current_para.append(item_body)  # start new paragraph for item content
@@ -619,7 +629,6 @@ def assemble_translated_file(
                     escaped = escape_for_latex(translated)
                     # Restore refs after escaping (placeholders are not affected by escape)
                     restored = restore_refs(escaped, part.refs_map)
-                    final_parts.append("")
                     final_parts.append(r"\trans{" + restored + "}")
         else:
             final_parts.append(part)

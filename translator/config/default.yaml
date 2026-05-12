@@ -9,9 +9,9 @@
 #   命令行参数 > 配置文件 > 默认值
 
 # Translation model / 翻译模型
-# Options: gpt-4o-mini, gpt-5-nano, or "x"/"debug"/"none" for testing without API
+# Options: gpt-4o-mini, gpt-5-nano, gpt-4.1-nano, or "x"/"debug"/"none" for testing without API
 # 可选项: gpt-4o-mini, gpt-5-nano, 或使用 "x"/"debug"/"none" 进行无 API 测试
-model: gpt-4o-mini
+model: gpt-4.1-nano
 
 # Target language / 目标语言
 # Options: Chinese, Japanese, Korean, German, French, Spanish, etc.
