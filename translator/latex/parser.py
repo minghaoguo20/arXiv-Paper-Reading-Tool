@@ -7,6 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from arxiv_latex_cleaner.arxiv_latex_cleaner import (
+    _remove_comments_inline,
+    _remove_environment,
+)
+
 from translator.api import TranslationTask, batch_translate
 
 if TYPE_CHECKING:
@@ -296,6 +301,11 @@ def parse_file_for_translation(
     Returns:
         FileParseResult with parsed structure and tasks.
     """
+    # Strip all LaTeX comments before parsing
+    lines_with_ends = content.splitlines(keepends=True)
+    lines_with_ends = [_remove_comments_inline(line) for line in lines_with_ends]
+    content = _remove_environment("".join(lines_with_ends), "comment")
+
     result_parts: list[str | TranslationTask] = []
     tasks: list[TranslationTask] = []
     lines = content.split("\n")
