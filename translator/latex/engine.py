@@ -13,31 +13,6 @@ class TexEngine(Enum):
     XELATEX = "xelatex"
 
 
-def get_engine_sequence(output_dir: Path, engine_mode: str) -> list[TexEngine]:
-    """
-    Get the sequence of engines to try based on user preference.
-
-    Args:
-        output_dir: Directory containing tex files.
-        engine_mode: User-specified engine mode: "auto", "xelatex", or "pdflatex".
-
-    Returns:
-        List of engines to try in order.
-    """
-    if engine_mode == "xelatex":
-        return [TexEngine.XELATEX]
-    elif engine_mode == "pdflatex":
-        return [TexEngine.PDFLATEX]
-    else:  # auto mode
-        # Check for explicit pdflatex declaration in document
-        detected = detect_engine(output_dir)
-        if detected == TexEngine.PDFLATEX:
-            # Document explicitly uses pdflatex features, try pdflatex first
-            return [TexEngine.PDFLATEX, TexEngine.XELATEX]
-        else:
-            # Default: XeLaTeX first (better CJK), fallback to pdfLaTeX
-            return [TexEngine.XELATEX, TexEngine.PDFLATEX]
-
 
 def is_unrecoverable_error(output: str) -> bool:
     """
@@ -113,13 +88,18 @@ def detect_engine(output_dir: Path) -> TexEngine:
     if re.search(r"%\s*!TEX\s+program\s*=\s*xelatex", all_content, re.IGNORECASE):
         return TexEngine.XELATEX
     if re.search(r"%\s*!TEX\s+program\s*=\s*lualatex", all_content, re.IGNORECASE):
-        # LuaLaTeX is closer to XeLaTeX in features
         return TexEngine.XELATEX
+
+    # Respect existing CJK package choices as unambiguous engine signals
+    if re.search(r"\\usepackage[^{]*\{CJKutf8\}", all_content):
+        return TexEngine.PDFLATEX
 
     # Check for XeLaTeX-specific packages (these won't work with pdfLaTeX)
     xelatex_indicators = [
         r"\\usepackage\{fontspec\}",
         r"\\usepackage\{xeCJK\}",
+        r"\\usepackage\{ctex\}",
+        r"\\documentclass[^{]*\{ctex",  # ctexart, ctexrep, ctexbook
         r"\\setmainfont",
         r"\\setsansfont",
         r"\\setmonofont",
@@ -134,9 +114,11 @@ def detect_engine(output_dir: Path) -> TexEngine:
         r"\\usepackage\[T1\]\{fontenc\}",
         r"\\usepackage\[utf8\]\{inputenc\}",
         r"\\DeclareUnicodeCharacter",
+        r"\\pdfoutput\s*=\s*1",
         r"\\pdfinfo",
         r"\\pdfcatalog",
         r"\\pdfliteral",
+        r"\\pdfcompresslevel",
     ]
     pdflatex_score = 0
     for pattern in pdflatex_indicators:
@@ -309,6 +291,8 @@ def _font_to_package(font_name: str) -> str | None:
         r"^psy": "symbol",
         # CB Greek fonts (cyber* family)
         r"^cyber": "cbfonts",
+        # CJK Unicode bitmap fonts (zhmetrics) → fandol Type1 replacement
+        r"^uni(hei|song|fang|kai|zh)": "fandol",
     }
 
     for pattern, package in font_patterns.items():
@@ -373,9 +357,11 @@ def infer_font_encoding(font_name: str) -> str:
     Returns:
         LaTeX encoding name (e.g., 'LGR', 'T1', 'OT1').
     """
-    # CJK fonts (cyberb* from zhmetrics) - these need special handling, not font fallback
+    # CJK bitmap fonts - these need special handling, not font fallback
     if font_name.startswith("cyberb"):
-        return "C70"  # CJK Unicode encoding
+        return "C70"
+    if re.match(r"^uni(hei|song|fang|kai|zh)", font_name):
+        return "C70"
 
     # CB Greek fonts (grmn*, grml*, but NOT cyberb*)
     if font_name.startswith(("grmn", "grml")):

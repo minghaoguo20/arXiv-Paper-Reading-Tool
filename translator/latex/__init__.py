@@ -6,13 +6,10 @@ from translator.latex.engine import (
     add_font_fallbacks_to_file,
     detect_engine,
     get_compile_command,
-    get_engine_sequence,
     install_packages,
-    is_unrecoverable_error,
     parse_missing_fonts,
     parse_missing_packages,
 )
-from translator.latex.fixes import fix_package_conflicts
 from translator.latex.parser import (
     FileParseResult,
     assemble_translated_file,
@@ -32,12 +29,9 @@ __all__ = [
     "TexEngine",
     "detect_engine",
     "get_compile_command",
-    "get_engine_sequence",
     "install_packages",
-    "is_unrecoverable_error",
     "parse_missing_fonts",
     "parse_missing_packages",
-    "fix_package_conflicts",
     "FileParseResult",
     "assemble_translated_file",
     "clean_for_translation",

@@ -18,11 +18,8 @@ from translator.latex import (
     add_font_fallbacks_to_file,
     assemble_translated_file,
     detect_engine,
-    fix_package_conflicts,
     get_compile_command,
-    get_engine_sequence,
     install_packages,
-    is_unrecoverable_error,
     parse_file_for_translation,
     parse_missing_fonts,
     parse_missing_packages,
@@ -246,6 +243,14 @@ def _compile_with_engine(
                         print(f"  Retrying compilation (attempt {attempt + 2})...")
                         continue
 
+                # Detect CJK fontset incompatibility with pdflatex (e.g. fandol requires
+                # XeLaTeX). Fail fast so the caller can switch engines immediately.
+                if engine == TexEngine.PDFLATEX and re.search(
+                    r"fontset\s*`.+?'\s*is unavailable in current", last_output
+                ):
+                    print("  CJK fontset incompatible with pdflatex, engine switch required")
+                    return False, last_output
+
                 # Second, check for font errors and add fallbacks
                 if engine == TexEngine.PDFLATEX and attempt < max_attempts - 1:
                     missing_fonts = parse_missing_fonts(last_output)
@@ -304,10 +309,6 @@ def _process_with_engine(
         print(f"{'='*50}")
         _reset_output_dir(paper_dir, output_dir)
 
-    # Fix common package conflicts (engine-aware)
-    print("Checking for package conflicts...")
-    fix_package_conflicts(output_dir, engine)
-
     # Find main tex file
     main_tex = None
     tex_files = list(output_dir.glob("*.tex"))
@@ -322,72 +323,75 @@ def _process_with_engine(
     if main_tex is None:
         return False, "No main tex file found"
 
-    # Add CJK support
-    print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
-    main_content = main_tex.read_text(encoding="utf-8")
-    main_content = add_cjk_support(
-        main_content,
-        engine=engine,
-        arxiv_id=metadata.get("arxiv_id") if metadata else None,
-        published_date=metadata.get("published") if metadata else None,
-        category=metadata.get("category") if metadata else None,
-    )
-    main_tex.write_text(main_content, encoding="utf-8")
+    english_only = cfg and cfg.english_only_mode
 
-    # Find included files
-    visited: set[Path] = set()
-    included_files = find_included_files(main_tex, output_dir, visited)
-
-    # === Phase 1: Parse all files ===
-    from translator.latex.parser import FileParseResult
-
-    all_tasks = []
-    file_results: dict[Path, FileParseResult] = {}
-    task_id_counter = 0
-
-    print(f"Parsing main file: {main_tex.name}")
-    content = main_tex.read_text(encoding="utf-8", errors="replace")
-    result = parse_file_for_translation(
-        content, is_main_file=True, task_id_start=task_id_counter
-    )
-    result.file_path = main_tex
-    file_results[main_tex] = result
-    all_tasks.extend(result.tasks)
-    task_id_counter += len(result.tasks)
-
-    if included_files:
-        print(f"Parsing {len(included_files)} included files")
-        for inc_file in included_files:
-            rel_path = inc_file.relative_to(output_dir)
-            print(f"  {rel_path}")
-            content = inc_file.read_text(encoding="utf-8", errors="replace")
-            result = parse_file_for_translation(
-                content, is_main_file=False, task_id_start=task_id_counter
-            )
-            result.file_path = inc_file
-            file_results[inc_file] = result
-            all_tasks.extend(result.tasks)
-            task_id_counter += len(result.tasks)
-
-    print(f"Collected {len(all_tasks)} paragraphs from {len(file_results)} files")
-
-    # === Phase 2: Batch translate ===
-    max_workers = cfg.max_workers if cfg else 10
-    translations = batch_translate(all_tasks, output_dir, max_workers)
-
-    # === Phase 3: Assemble files ===
-    print("Assembling translated files...")
-    for file_path, parse_result in file_results.items():
-        final_content = assemble_translated_file(parse_result, translations)
-        file_path.write_text(final_content, encoding="utf-8")
-
-    # Add TOC/LOT/LOF if enabled (after translation, before compile)
-    if cfg and cfg.toc:
-        print("Adding List of Tables/Figures and Table of Contents...")
+    if not english_only:
+        # Add CJK support
+        print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
         main_content = main_tex.read_text(encoding="utf-8")
-        main_content = add_toc(main_content)  # TOC before LOT/LOF
-        main_content = add_lot_lof(main_content)  # LOT/LOF at end
+        main_content = add_cjk_support(
+            main_content,
+            engine=engine,
+            arxiv_id=metadata.get("arxiv_id") if metadata else None,
+            published_date=metadata.get("published") if metadata else None,
+            category=metadata.get("category") if metadata else None,
+        )
         main_tex.write_text(main_content, encoding="utf-8")
+
+        # Find included files
+        visited: set[Path] = set()
+        included_files = find_included_files(main_tex, output_dir, visited)
+
+        # === Phase 1: Parse all files ===
+        from translator.latex.parser import FileParseResult
+
+        all_tasks = []
+        file_results: dict[Path, FileParseResult] = {}
+        task_id_counter = 0
+
+        print(f"Parsing main file: {main_tex.name}")
+        content = main_tex.read_text(encoding="utf-8", errors="replace")
+        result = parse_file_for_translation(
+            content, is_main_file=True, task_id_start=task_id_counter
+        )
+        result.file_path = main_tex
+        file_results[main_tex] = result
+        all_tasks.extend(result.tasks)
+        task_id_counter += len(result.tasks)
+
+        if included_files:
+            print(f"Parsing {len(included_files)} included files")
+            for inc_file in included_files:
+                rel_path = inc_file.relative_to(output_dir)
+                print(f"  {rel_path}")
+                content = inc_file.read_text(encoding="utf-8", errors="replace")
+                result = parse_file_for_translation(
+                    content, is_main_file=False, task_id_start=task_id_counter
+                )
+                result.file_path = inc_file
+                file_results[inc_file] = result
+                all_tasks.extend(result.tasks)
+                task_id_counter += len(result.tasks)
+
+        print(f"Collected {len(all_tasks)} paragraphs from {len(file_results)} files")
+
+        # === Phase 2: Batch translate ===
+        max_workers = cfg.max_workers if cfg else 10
+        translations = batch_translate(all_tasks, output_dir, max_workers)
+
+        # === Phase 3: Assemble files ===
+        print("Assembling translated files...")
+        for file_path, parse_result in file_results.items():
+            final_content = assemble_translated_file(parse_result, translations)
+            file_path.write_text(final_content, encoding="utf-8")
+
+        # Add TOC/LOT/LOF if enabled (after translation, before compile)
+        if cfg and cfg.toc:
+            print("Adding List of Tables/Figures and Table of Contents...")
+            main_content = main_tex.read_text(encoding="utf-8")
+            main_content = add_toc(main_content)  # TOC before LOT/LOF
+            main_content = add_lot_lof(main_content)  # LOT/LOF at end
+            main_tex.write_text(main_content, encoding="utf-8")
 
     # === Phase 4: Compile ===
     print(f"\nCompiling with {engine.value}...")
@@ -400,7 +404,8 @@ def process_paper(paper_dir: Path) -> None:
     print(f"Processing: {paper_dir.name}")
 
     # Create output directory with copy of paper
-    output_dir = paper_dir.parent / f"{paper_dir.name}_bilingual"
+    suffix = "_compiled" if (cfg and cfg.english_only_mode) else "_bilingual"
+    output_dir = paper_dir.parent / f"{paper_dir.name}{suffix}"
 
     if cfg and cfg.resume and output_dir.exists():
         # Resume mode: reset source files but keep cache
@@ -421,7 +426,6 @@ def process_paper(paper_dir: Path) -> None:
 
     # Detect source file's preferred engine
     detected_engine = detect_engine(output_dir)
-    # Color codes: bold yellow for pdflatex hint, bold cyan for xelatex hint
     if detected_engine == TexEngine.PDFLATEX:
         color = "\033[1;33m"  # Bold Yellow
         hint = "pdfLaTeX features detected (fontenc, inputenc, etc.)"
@@ -430,15 +434,17 @@ def process_paper(paper_dir: Path) -> None:
         hint = "XeLaTeX compatible (default)"
     print(f"Source analysis: {color}[{detected_engine.value}]\033[0m - {hint}")
 
-    # Get engine sequence based on user preference
-    engine_mode = cfg.engine if cfg else "auto"
-    if engine_mode == "auto":
-        # In auto mode, always start with XeLaTeX (better CJK support)
-        engines = [TexEngine.XELATEX]
-        print(f"Engine: \033[1;32m[xelatex]\033[0m (default, best for CJK)")
+    # Select engine: user-specified or detected from document
+    engine_mode = cfg.engine if cfg else ""
+    if engine_mode == "xelatex":
+        engine = TexEngine.XELATEX
+        print(f"Engine: \033[1;32m[xelatex]\033[0m (user specified)")
+    elif engine_mode == "pdflatex":
+        engine = TexEngine.PDFLATEX
+        print(f"Engine: \033[1;32m[pdflatex]\033[0m (user specified)")
     else:
-        engines = get_engine_sequence(output_dir, engine_mode)
-        print(f"Engine: \033[1;32m[{engine_mode}]\033[0m (user specified)")
+        engine = detected_engine
+        print(f"Engine: \033[1;32m[{engine.value}]\033[0m (detected from document)")
 
     # Get arXiv metadata for watermark
     arxiv_id = extract_arxiv_id_from_path(paper_dir)
@@ -451,43 +457,12 @@ def process_paper(paper_dir: Path) -> None:
             if metadata.get("category"):
                 print(f"  Category: {metadata['category']}")
 
-    # Try first engine
-    current_engine = engines[0]
     success, error_output = _process_with_engine(
-        paper_dir, output_dir, current_engine, cfg, metadata, is_retry=False
+        paper_dir, output_dir, engine, cfg, metadata, is_retry=False
     )
 
-    # If failed and in auto mode, ask user whether to try pdfLaTeX
-    if not success and engine_mode == "auto" and current_engine == TexEngine.XELATEX:
-        # Check for unrecoverable errors first
-        if is_unrecoverable_error(error_output):
-            print(f"\n\033[1;31m[Unrecoverable error detected (syntax error, etc.)]\033[0m")
-            print(error_output[-2000:] if len(error_output) > 2000 else error_output)
-        else:
-            print(f"\n\033[1;33m[XeLaTeX compilation failed]\033[0m")
-            print("Error summary:")
-            # Show last 500 chars of error
-            print(error_output[-500:] if len(error_output) > 500 else error_output)
-            print()
-
-            # Ask user whether to try pdfLaTeX
-            try:
-                response = input("\033[1;36m[Try pdfLaTeX instead?] [y/N]: \033[0m").strip().lower()
-                if response == "y":
-                    success, error_output = _process_with_engine(
-                        paper_dir, output_dir, TexEngine.PDFLATEX, cfg, metadata, is_retry=True
-                    )
-                    if not success:
-                        print(f"\n\033[1;31m[pdfLaTeX also failed]\033[0m")
-                        print(error_output[-2000:] if len(error_output) > 2000 else error_output)
-                else:
-                    print("Skipped pdfLaTeX fallback.")
-            except (EOFError, KeyboardInterrupt):
-                print("\nAborted.")
-
-    elif not success:
-        # User specified engine failed
-        print(f"\n\033[1;31m[Compilation failed ({current_engine.value})]\033[0m")
+    if not success:
+        print(f"\n\033[1;31m[Compilation failed ({engine.value})]\033[0m")
         if error_output == "latexmk not found":
             print("Error: latexmk not found. Please install TinyTeX or BasicTeX:")
             print("  TinyTeX: curl -sL 'https://yihui.org/tinytex/install-bin-unix.sh' | sh")

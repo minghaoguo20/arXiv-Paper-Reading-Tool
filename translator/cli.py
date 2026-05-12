@@ -24,19 +24,22 @@ class Config:
     max_workers: int = 30
     # Continue from previous translation (reuse cached translations)
     resume: bool = False
-    # LaTeX engine: auto (XeLaTeX with pdfLaTeX fallback), xelatex, or pdflatex
-    engine: str = "auto"
+    # LaTeX engine: xelatex or pdflatex (default: auto-detect from document)
+    engine: str = ""
     # Add Table of Contents, List of Tables, List of Figures after \maketitle
     toc: bool = True
 
     _instance: "Config" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
+    english_only_mode: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
         Config._instance = self
         if self.model in ("x", "debug", "none"):
             self.model = "none"
             self.debug_mode = True
+        elif self.model == "en":
+            self.english_only_mode = True
 
 
 def print_help_examples():
@@ -81,7 +84,7 @@ LaTeX Paper Translator - Common Commands:
   # Adjust concurrency (default: 30)
   python -m translator --input 2307.16789 --max_workers 20
 
-  # Force specific LaTeX engine (default: auto)
+  # Force specific LaTeX engine (default: auto-detect from document)
   python -m translator --input 2307.16789 --engine xelatex
   python -m translator --input 2307.16789 --engine pdflatex
 
@@ -116,10 +119,13 @@ def main(cfg: Config):
 
     if cfg.debug_mode:
         print("Debug mode: using mock translation")
+    elif cfg.english_only_mode:
+        print("English-only mode: skipping translation, compiling original")
     else:
         print(f"Using model: {cfg.model}")
 
-    print(f"Target language: {cfg.target_lang}")
+    if not cfg.english_only_mode:
+        print(f"Target language: {cfg.target_lang}")
 
     # Check if input is an arXiv reference (ID or URL)
     arxiv_id = parse_arxiv_input(input_arg)

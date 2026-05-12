@@ -12,19 +12,8 @@ def add_cjk_support(
     published_date: str | None = None,
     category: str | None = None,
 ) -> str:
-    """
-    Add CJK package to main tex file for Chinese support.
-
-    Args:
-        main_tex_content: The content of the main tex file.
-        engine: The TeX engine to use (determines which CJK package to add).
-        arxiv_id: Optional arXiv ID for watermark (e.g., "2511.05271v4").
-        published_date: Optional publication date for watermark (e.g., "5 Nov 2025").
-        category: Optional arXiv category (e.g., "cs.CL").
-
-    Returns:
-        Modified tex content with CJK support and optional watermark.
-    """
+    if "% === Chinese Support (auto-added by translator) ===" in main_tex_content:
+        return main_tex_content
     if engine == TexEngine.XELATEX:
         return _add_xelatex_cjk_support(
             main_tex_content, arxiv_id, published_date, category
@@ -42,20 +31,6 @@ def _add_xelatex_cjk_support(
     category: str | None = None,
 ) -> str:
     """Add xeCJK support for XeLaTeX engine."""
-    # First, add hyperref xetex driver option after \documentclass (before hyperref is loaded)
-    doc_class_match = re.search(r"(\\documentclass[^\n]*\n)", main_tex_content)
-    if doc_class_match:
-        # Add xetex option for hyperref before any package loading
-        hyperref_fix = r"""
-% === XeTeX compatibility (auto-added) ===
-\PassOptionsToPackage{xetex}{hyperref}
-\PassOptionsToPackage{xetex}{graphicx}
-"""
-        insert_pos = doc_class_match.end()
-        main_tex_content = (
-            main_tex_content[:insert_pos] + hyperref_fix + main_tex_content[insert_pos:]
-        )
-
     # Build watermark packages if needed
     watermark_packages = ""
     if arxiv_id and published_date:
@@ -65,19 +40,14 @@ def _add_xelatex_cjk_support(
 \usepackage{eso-pic}
 """
 
-    # Insert xeCJK and fontspec BEFORE \begin{document} to override any font settings
+    # Insert xeCJK BEFORE \begin{document}
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         cjk_config = rf"""
 % === Chinese Support (auto-added by translator) ===
-\usepackage{{fontspec}}
 \usepackage{{xeCJK}}
 \setCJKmainfont{{PingFang SC}}
-% Override Times font (ptm) with native Times New Roman
-\setmainfont{{Times New Roman}}[Ligatures=TeX]
-\setsansfont{{Helvetica}}
-\setmonofont{{Courier New}}
-% Translation style
+\usepackage{{xcolor}}
 \definecolor{{transcolor}}{{gray}}{{0.4}}
 \newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
 {watermark_packages}% === End Chinese Support ===
@@ -113,31 +83,13 @@ def _add_pdflatex_cjk_support(
 \usepackage{eso-pic}
 """
 
-    # Insert CJKutf8 BEFORE \begin{document}
+    # Insert CJKutf8 packages BEFORE \begin{document}
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         cjk_config = rf"""
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{CJKutf8}}
-
-% === CJK Font Mappings for pdfLaTeX (auto-added) ===
-% Map common font families to gbsn to avoid fallback to song/cyberb
-\DeclareFontFamily{{C70}}{{phv}}{{}}
-\DeclareFontShape{{C70}}{{phv}}{{m}}{{n}}{{<-> CJK * gbsnu}}{{\CJKnormal}}
-\DeclareFontShape{{C70}}{{phv}}{{bx}}{{n}}{{<-> CJKb * gbsnu}}{{\CJKbold}}
-\DeclareFontFamily{{C70}}{{ptm}}{{}}
-\DeclareFontShape{{C70}}{{ptm}}{{m}}{{n}}{{<-> CJK * gbsnu}}{{\CJKnormal}}
-\DeclareFontShape{{C70}}{{ptm}}{{bx}}{{n}}{{<-> CJKb * gbsnu}}{{\CJKbold}}
-\DeclareFontFamily{{C70}}{{pcr}}{{}}
-\DeclareFontShape{{C70}}{{pcr}}{{m}}{{n}}{{<-> CJK * gbsnu}}{{\CJKnormal}}
-\DeclareFontShape{{C70}}{{pcr}}{{bx}}{{n}}{{<-> CJKb * gbsnu}}{{\CJKbold}}
-% Suppress font substitution warnings
-\pdfsuppresswarningpagegroup=1
-
-% Auto-close CJK environment at document end (for TOC/LOF/LOT support)
-\AtEndDocument{{\end{{CJK}}}}
-
-% Translation style
+\usepackage{{xcolor}}
 \definecolor{{transcolor}}{{gray}}{{0.4}}
 \newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
 {watermark_packages}% === End Chinese Support ===
@@ -148,25 +100,30 @@ def _add_pdflatex_cjk_support(
             main_tex_content[:insert_pos] + cjk_config + main_tex_content[insert_pos:]
         )
 
-    # Wrap document body with CJK environment
-    # Add \begin{CJK}{UTF8}{gbsn} after \begin{document}
+    # Insert \begin{CJK*} after \begin{document}
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
-        cjk_begin = r"""
-\begin{CJK}{UTF8}{gbsn}
-"""
         insert_pos = doc_begin_match.end()
         main_tex_content = (
-            main_tex_content[:insert_pos] + cjk_begin + main_tex_content[insert_pos:]
+            main_tex_content[:insert_pos]
+            + "\n\\begin{CJK*}{UTF8}{gbsn}"
+            + main_tex_content[insert_pos:]
         )
 
-    # Note: \end{CJK} is now automatically added by \AtEndDocument hook in preamble
-    # This ensures TOC/LOF/LOT commands are within CJK environment
-
-    # Add watermark code after \begin{document} and CJK begin if metadata is provided
+    # Add watermark code if metadata is provided
     if arxiv_id and published_date:
         main_tex_content = _add_watermark(
             main_tex_content, arxiv_id, published_date, category
+        )
+
+    # Insert \end{CJK*} before \end{document}
+    end_doc_match = re.search(r"(\\end\{document\})", main_tex_content)
+    if end_doc_match:
+        insert_pos = end_doc_match.start()
+        main_tex_content = (
+            main_tex_content[:insert_pos]
+            + "\\end{CJK*}\n"
+            + main_tex_content[insert_pos:]
         )
 
     return main_tex_content
