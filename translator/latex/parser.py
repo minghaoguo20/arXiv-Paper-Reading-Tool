@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from arxiv_latex_cleaner.arxiv_latex_cleaner import (
+    _remove_command,
     _remove_comments_inline,
     _remove_environment,
+    _simplify_conditional_blocks,
 )
 
 from translator.api import TranslationTask, batch_translate
@@ -137,6 +139,37 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
         refs_map[placeholder] = match
         text = text.replace(match, placeholder, 1)
 
+    # Extract and replace \footnote{...} with placeholders (preserve original, don't translate)
+    def extract_footnotes(text: str) -> list[str]:
+        """Extract all \\footnote{...} commands handling nested braces."""
+        matches = []
+        pos = 0
+        while True:
+            match = re.search(r"\\footnote\{", text[pos:])
+            if not match:
+                break
+            start = pos + match.start()
+            brace_start = pos + match.end()
+            depth = 1
+            i = brace_start
+            while i < len(text) and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                i += 1
+            if depth != 0:
+                break
+            matches.append(text[start:i])
+            pos = i
+        return matches
+
+    footnote_matches = extract_footnotes(text)
+    for i, match in enumerate(footnote_matches):
+        placeholder = f"[FOOTNOTE_{i}]"
+        refs_map[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
     # Extract and replace \textcolor{color}{text} commands with unique placeholders
     # This handles commands like \textcolor{blue!70}{text} where color can contain !
     def extract_textcolor(text: str) -> list[str]:
@@ -190,14 +223,12 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
 
     # Extract and replace no-arg macros (e.g., \model, \dataset, \LaTeX)
     # Match \xxx not followed by { or letter (to avoid \textbf{...} etc.)
-    macro_matches = list(set(re.findall(r"\\[a-zA-Z]+(?![{a-zA-Z])", text)))
+    macro_matches = sorted(set(re.findall(r"\\[a-zA-Z]+(?![{a-zA-Z])", text)), key=len, reverse=True)
     for i, match in enumerate(macro_matches):
         placeholder = f"[MACRO_{i}]"
         refs_map[placeholder] = match
         text = text.replace(match, placeholder)
 
-    # Remove comments (% not preceded by digit or backslash - avoids matching 15% or \%)
-    text = re.sub(r"(?<![\d\\])%.*", "", text)
     # Remove \begin{...}[options] and \end{...}
     text = re.sub(r"\\begin\{[^}]+\}(\[[^\]]*\])?", "", text)
     text = re.sub(r"\\end\{[^}]+\}", "", text)
@@ -205,10 +236,10 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
     text = re.sub(r"\\item(\[[^\]]*\])?", "", text)
     # Remove \label{...}
     text = re.sub(r"\\label\{[^}]*\}", "", text)
-    # Simplify formatting commands but keep content
-    text = re.sub(r"\\textit\{([^{}]*)\}", r"\1", text)
-    text = re.sub(r"\\textbf\{([^{}]*)\}", r"\1", text)
-    text = re.sub(r"\\emph\{([^{}]*)\}", r"\1", text)
+    # Simplify formatting commands but keep content (handles nested braces)
+    text = _remove_command(text, "textit", keep_text=True)
+    text = _remove_command(text, "textbf", keep_text=True)
+    text = _remove_command(text, "emph", keep_text=True)
     # Clean up whitespace
     text = re.sub(r"\s+", " ", text)
     return text.strip(), refs_map
@@ -305,6 +336,8 @@ def parse_file_for_translation(
     lines_with_ends = content.splitlines(keepends=True)
     lines_with_ends = [_remove_comments_inline(line) for line in lines_with_ends]
     content = _remove_environment("".join(lines_with_ends), "comment")
+    # Fold \iftrue/\iffalse conditional blocks (removes draft-only content)
+    content = _simplify_conditional_blocks(content)
 
     result_parts: list[str | TranslationTask] = []
     tasks: list[TranslationTask] = []
@@ -559,6 +592,12 @@ def parse_file_for_translation(
             item_body = item_match.group(2).strip()
             if item_body:
                 current_para.append(item_body)  # start new paragraph for item content
+            continue
+
+        # \input{...} is a structural command, not paragraph content
+        if re.match(r"\\input\{[^}]*\}", stripped):
+            flush_paragraph()
+            result_parts.append(line)
             continue
 
         # Empty line = paragraph break
