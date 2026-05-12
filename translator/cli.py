@@ -2,6 +2,7 @@
 
 import sys
 from dataclasses import dataclass, field
+import re
 from pathlib import Path
 
 import draccus
@@ -35,6 +36,14 @@ class Config:
 
     def __post_init__(self):
         Config._instance = self
+        # draccus uses YAML to parse CLI values, which converts e.g. "2511.14460"
+        # to float 2511.1446, dropping the trailing zero. Re-read from sys.argv directly.
+        for i, arg in enumerate(sys.argv[:-1]):
+            if arg == "--input":
+                raw = sys.argv[i + 1]
+                if re.fullmatch(r"\d{4}\.\d{4,5}(?:v\d+)?", raw):
+                    self.input = raw
+                break
         if self.model in ("x", "debug", "none"):
             self.model = "none"
             self.debug_mode = True

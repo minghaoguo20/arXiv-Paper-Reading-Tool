@@ -32,7 +32,7 @@ engine: auto
 # Add Table of Contents and Lists / 添加目录和图表列表
 # Adds TOC (Table of Contents), LOT (List of Tables), LOF (List of Figures) after \maketitle
 # 在 \maketitle 后添加目录、表格列表、图片列表
-toc: true
+toc: false
 
 # Resume from previous translation / 断点续翻（复用缓存）
 # Reuse cached translations from previous runs

@@ -126,14 +126,14 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
     text = text.replace(ESCAPED_DOLLAR_PLACEHOLDER, r"\$")
 
     # Extract and replace \cite commands with unique placeholders
-    cite_matches = re.findall(r"~?\\cite[pt]?\{[^}]*\}", text)
+    cite_matches = re.findall(r"~?\\cite[pt]?\s*\{[^}]*\}", text)
     for i, match in enumerate(cite_matches):
         placeholder = f"[CITE_{i}]"
         refs_map[placeholder] = match
         text = text.replace(match, placeholder, 1)
 
     # Extract and replace \ref commands with unique placeholders
-    ref_matches = re.findall(r"~?\\ref\{[^}]*\}", text)
+    ref_matches = re.findall(r"~?\\ref\s*\{[^}]*\}", text)
     for i, match in enumerate(ref_matches):
         placeholder = f"[REF_{i}]"
         refs_map[placeholder] = match
@@ -175,7 +175,7 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
     def extract_textcolor(text: str) -> list[str]:
         """Extract all \textcolor{...}{...} commands handling nested braces."""
         matches = []
-        pattern = r"\\textcolor\{"
+        pattern = r"\\textcolor(?:\[[^\]]*\])?\{"
         pos = 0
         while True:
             match = re.search(pattern, text[pos:])
