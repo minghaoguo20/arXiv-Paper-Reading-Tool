@@ -75,6 +75,17 @@ python run.py translate --config_path papercli/translate/config/default.yaml --i
 
 `provider=auto` 时：若 `RIGHTCODE_API` 已设置则优先使用 rightcode，否则使用 `ONE_API`。
 
+## 输入格式
+
+| 格式 | 示例 | 说明 |
+|------|------|------|
+| arXiv ID | `2307.16789` | 下载最新版本 |
+| 带版本号 | `2307.16789v2` | 下载指定版本 |
+| abs URL | `https://arxiv.org/abs/2307.16789` | 从摘要页提取 ID |
+| pdf URL | `https://arxiv.org/pdf/2307.16789` | 从 PDF 链接提取 ID |
+| 本地目录 | `tex/arXiv-xxx` | 直接处理本地目录 |
+| 压缩包 | `tex/arXiv-xxx.tar.gz` | 先解压再处理 |
+
 ## 输出位置
 
 翻译结果写入原论文目录同级的新目录中：
@@ -119,3 +130,26 @@ macOS 下生成 PDF 后会自动在 Finder 中打开输出目录。
 ## 配置文件
 
 默认配置位于 `papercli/translate/config/default.yaml`，可直接修改其中的默认值，或通过 `--config_path` 指定自定义配置文件。命令行参数优先级高于配置文件。
+
+## 手动编译 PDF
+
+自动编译失败时，可在翻译输出目录中手动运行：
+
+```bash
+# XeLaTeX（推荐，中文支持更好）
+latexmk -xelatex -bibtex -f -interaction=nonstopmode -file-line-error main.tex
+
+# pdfLaTeX（兼容性更好）
+latexmk -pdf -bibtex -f -interaction=nonstopmode -file-line-error main.tex
+```
+
+## 常见问题
+
+**编译失败怎么办？**
+查看终端错误信息。常见原因：字体缺失（程序自动添加回退方案）、包冲突（程序自动修复 subfigure/natbib/CJK 等冲突）、缺失包（程序自动安装）。XeLaTeX 失败时程序会询问是否切换到 pdfLaTeX。
+
+**如何更换翻译 API？**
+设置环境变量 `API_URL`，需兼容 OpenAI 格式。
+
+**翻译会修改原始文件吗？**
+不会。原始文件保留在 `tex/{id}/`，所有修改都在 `tex/{id}_bilingual/` 中进行。
