@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -154,7 +155,11 @@ def _compile_with_engine(
     output_dir: Path, main_tex: Path, engine: TexEngine
 ) -> tuple[bool, str]:
     """Compile document with specified engine."""
-    compile_cmd = get_compile_command(engine, main_tex.name)
+    # Run latexmk from the project root so that sibling .sty files are found,
+    # even when the main tex file lives in a subdirectory (e.g. acl/acl_latex.tex).
+    compile_dir = output_dir
+    tex_rel_path = str(main_tex.relative_to(output_dir))
+    compile_cmd = get_compile_command(engine, tex_rel_path)
     max_attempts = 20
     installed_packages: set[str] = set()
     fixed_fonts: set[str] = set()
@@ -162,9 +167,9 @@ def _compile_with_engine(
 
     for attempt in range(max_attempts):
         try:
-            result = _run_latex(compile_cmd, output_dir, timeout=300)
-            pdf_path = output_dir / (main_tex.stem + ".pdf")
-            xdv_path = output_dir / (main_tex.stem + ".xdv")
+            result = _run_latex(compile_cmd, compile_dir, timeout=300)
+            pdf_path = compile_dir / (main_tex.stem + ".pdf")
+            xdv_path = compile_dir / (main_tex.stem + ".xdv")
 
             if pdf_path.exists() and pdf_path.stat().st_size > 0:
                 if result.returncode == 0:
@@ -183,7 +188,7 @@ def _compile_with_engine(
                 try:
                     _run_latex(
                         ["xdvipdfmx", "-o", pdf_path.name, xdv_path.name],
-                        output_dir,
+                        compile_dir,
                         timeout=60,
                     )
                     if pdf_path.exists() and pdf_path.stat().st_size > 0:
@@ -214,6 +219,12 @@ def _compile_with_engine(
                     r"fontset\s*`.+?'\s*is unavailable in current", last_output
                 ):
                     print("  CJK fontset incompatible with pdflatex, engine switch required")
+                    return False, last_output
+
+                if engine == TexEngine.PDFLATEX and re.search(
+                    r"Font C70/[^=]+=\S+u[0-9a-f]{2} at .+ not loadable", last_output
+                ):
+                    print("  CJK subfont missing for non-CJK Unicode block, engine switch required")
                     return False, last_output
 
                 if engine == TexEngine.PDFLATEX and attempt < max_attempts - 1:
@@ -260,17 +271,44 @@ def _process_with_engine(
         _reset_output_dir(paper_dir, output_dir)
 
     main_tex = None
-    tex_files = list(output_dir.glob("*.tex"))
-    for tex_file in tex_files:
+
+    # Prefer the toplevel file declared in 00README.json over glob search,
+    # because some source packages bundle engine-specific template files
+    # (e.g. acl_lualatex.tex) that conflict with the CJK packages we inject.
+    readme_path = output_dir / "00README.json"
+    if readme_path.exists():
         try:
-            content = tex_file.read_text(encoding="utf-8")
-            if r"\documentclass" in content:
-                main_tex = tex_file
-                break
+            readme = json.loads(readme_path.read_text())
+            for source in readme.get("sources", []):
+                if source.get("usage") == "toplevel":
+                    candidate = output_dir / source["filename"]
+                    if candidate.exists():
+                        main_tex = candidate
+                        break
         except Exception:
-            continue
+            pass
+
+    if main_tex is None:
+        tex_files = list(output_dir.glob("*.tex")) or list(output_dir.rglob("*.tex"))
+        for tex_file in tex_files:
+            try:
+                content = tex_file.read_text(encoding="utf-8")
+                if r"\documentclass" in content:
+                    main_tex = tex_file
+                    break
+            except Exception:
+                continue
     if main_tex is None:
         return False, "No main tex file found"
+
+    # If main tex lives in a subdirectory, BibTeX won't find .bst files there.
+    # Copy them to output_dir so bibtex can locate them.
+    main_tex_dir = main_tex.parent
+    if main_tex_dir != output_dir:
+        for bst_file in main_tex_dir.glob("*.bst"):
+            dest = output_dir / bst_file.name
+            if not dest.exists():
+                shutil.copy2(bst_file, dest)
 
     english_only = cfg and cfg.english_only_mode
 
@@ -369,6 +407,9 @@ def process_paper(paper_dir: Path) -> None:
     if detected_engine == TexEngine.PDFLATEX:
         color = "\033[1;33m"
         hint = "pdfLaTeX features detected (fontenc, inputenc, etc.)"
+    elif detected_engine == TexEngine.LUALATEX:
+        color = "\033[1;35m"
+        hint = "LuaLaTeX features detected (luatexja, directlua, etc.)"
     else:
         color = "\033[1;36m"
         hint = "XeLaTeX compatible (default)"
@@ -381,6 +422,9 @@ def process_paper(paper_dir: Path) -> None:
     elif engine_mode == "pdflatex":
         engine = TexEngine.PDFLATEX
         print(f"Engine: \033[1;32m[pdflatex]\033[0m (user specified)")
+    elif engine_mode == "lualatex":
+        engine = TexEngine.LUALATEX
+        print(f"Engine: \033[1;32m[lualatex]\033[0m (user specified)")
     else:
         engine = detected_engine
         print(f"Engine: \033[1;32m[{engine.value}]\033[0m (detected from document)")
@@ -405,6 +449,13 @@ def process_paper(paper_dir: Path) -> None:
             print("Error: latexmk not found. Please install TinyTeX or BasicTeX:")
             print("  TinyTeX: curl -sL 'https://yihui.org/tinytex/install-bin-unix.sh' | sh")
             print("  BasicTeX: brew install --cask basictex")
+        elif engine == TexEngine.PDFLATEX and re.search(
+            r"Font C70/[^=]+=\S+u[0-9a-f]{2} at .+ not loadable"
+            r"|fontset\s*`.+?'\s*is unavailable in current",
+            error_output,
+        ):
+            print("CJK fonts are not supported by pdflatex.")
+            print("Hint: re-run with --engine xelatex")
         else:
             print(error_output[-2000:] if len(error_output) > 2000 else error_output)
 

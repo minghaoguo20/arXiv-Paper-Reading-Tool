@@ -1,5 +1,6 @@
 """LaTeX engine detection and selection."""
 
+import json
 import re
 import subprocess
 from enum import Enum
@@ -11,6 +12,7 @@ class TexEngine(Enum):
 
     PDFLATEX = "pdflatex"
     XELATEX = "xelatex"
+    LUALATEX = "lualatex"
 
 
 
@@ -75,8 +77,23 @@ def detect_engine(output_dir: Path) -> TexEngine:
     all_cls_files = list(output_dir.glob("**/*.cls"))
     all_sty_files = list(output_dir.glob("**/*.sty"))
 
+    # Exclude files marked as "ignore" in 00README.json to avoid false engine signals
+    # from bundled template files that don't represent the actual document.
+    ignored_files: set[Path] = set()
+    readme_path = output_dir / "00README.json"
+    if readme_path.exists():
+        try:
+            readme = json.loads(readme_path.read_text())
+            for source in readme.get("sources", []):
+                if source.get("usage") == "ignore":
+                    ignored_files.add((output_dir / source["filename"]).resolve())
+        except Exception:
+            pass
+
     all_content = ""
     for tex_file in all_tex_files + all_cls_files + all_sty_files:
+        if tex_file.resolve() in ignored_files:
+            continue
         try:
             all_content += tex_file.read_text(encoding="utf-8", errors="replace")
         except Exception:
@@ -88,11 +105,29 @@ def detect_engine(output_dir: Path) -> TexEngine:
     if re.search(r"%\s*!TEX\s+program\s*=\s*xelatex", all_content, re.IGNORECASE):
         return TexEngine.XELATEX
     if re.search(r"%\s*!TEX\s+program\s*=\s*lualatex", all_content, re.IGNORECASE):
-        return TexEngine.XELATEX
+        return TexEngine.LUALATEX
 
     # Respect existing CJK package choices as unambiguous engine signals
     if re.search(r"\\usepackage[^{]*\{CJKutf8\}", all_content):
         return TexEngine.PDFLATEX
+
+    # Check for LuaLaTeX-specific packages/commands
+    lualatex_indicators = [
+        r"\\usepackage\{luatexja\}",
+        r"\\usepackage\{luaotfload\}",
+        r"\\usepackage\{luacode\}",
+        r"\\directlua\s*\{",
+    ]
+    for pattern in lualatex_indicators:
+        if re.search(pattern, all_content):
+            return TexEngine.LUALATEX
+
+    # File name hints for lualatex (skip ignored files)
+    for tex_file in all_tex_files:
+        if tex_file.resolve() in ignored_files:
+            continue
+        if "lualatex" in tex_file.stem.lower():
+            return TexEngine.LUALATEX
 
     # Check for XeLaTeX-specific packages (these won't work with pdfLaTeX)
     xelatex_indicators = [
@@ -107,6 +142,13 @@ def detect_engine(output_dir: Path) -> TexEngine:
     ]
     for pattern in xelatex_indicators:
         if re.search(pattern, all_content):
+            return TexEngine.XELATEX
+
+    # File name hints for xelatex (skip ignored files)
+    for tex_file in all_tex_files:
+        if tex_file.resolve() in ignored_files:
+            continue
+        if "xelatex" in tex_file.stem.lower():
             return TexEngine.XELATEX
 
     # Check for pdfLaTeX-specific features
@@ -150,8 +192,18 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
         return [
             "latexmk",
             "-pdf",
-            "-bibtex",  # Always run BibTeX for bibliography processing
-            "-f",  # Force completion despite errors (warnings won't stop compilation)
+            "-bibtex",
+            "-f",
+            "-interaction=nonstopmode",
+            "-file-line-error",
+            tex_file,
+        ]
+    elif engine == TexEngine.LUALATEX:
+        return [
+            "latexmk",
+            "-lualatex",
+            "-bibtex",
+            "-f",
             "-interaction=nonstopmode",
             "-file-line-error",
             tex_file,
@@ -160,8 +212,8 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
         return [
             "latexmk",
             "-xelatex",
-            "-bibtex",  # Always run BibTeX for bibliography processing
-            "-f",  # Force completion despite errors (warnings won't stop compilation)
+            "-bibtex",
+            "-f",
             "-interaction=nonstopmode",
             "-file-line-error",
             tex_file,
@@ -291,6 +343,8 @@ def _font_to_package(font_name: str) -> str | None:
         r"^psy": "symbol",
         # CB Greek fonts (cyber* family)
         r"^cyber": "cbfonts",
+        # CJK Unicode bitmap font subfonts (e.g. gbsnu09, gkaiu4e) — not installable packages
+        r"^(gbsn|gkai|gbk|gfs|unisong|unihei|unifang|unibs)[a-z]?u[0-9a-f]{2}": None,
         # CJK Unicode bitmap fonts (zhmetrics) → fandol Type1 replacement
         r"^uni(hei|song|fang|kai|zh)": "fandol",
     }

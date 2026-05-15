@@ -335,6 +335,9 @@ def parse_file_for_translation(
 
     caption_accumulator: list[str] = []
     in_caption = False
+    in_abstract_cmd = False
+    abstract_cmd_depth = 0
+    abstract_cmd_para: list[str] = []
 
     def in_any_skip_env():
         return any(env_depth[env] > 0 for env in all_envs)
@@ -399,6 +402,87 @@ def parse_file_for_translation(
             flush_paragraph()
             in_abstract = False
             after_maketitle = True
+
+        # Handle \abstract{...} command form (e.g., ustc_conference class)
+        if not in_abstract_cmd and re.search(r'\\abstract\{', stripped):
+            in_abstract_cmd = True
+            abstract_cmd_para = []
+            match = re.search(r'\\abstract\{', line)
+            result_parts.append(line[:match.end()])
+            rest = line[match.end():]
+            depth = 1
+            close_at = None
+            for i, ch in enumerate(rest):
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        close_at = i
+                        break
+            if close_at is not None:
+                content_here = rest[:close_at].rstrip()
+                if content_here:
+                    abstract_cmd_para.append(content_here)
+                if abstract_cmd_para:
+                    para_text = "\n".join(abstract_cmd_para)
+                    result_parts.extend(abstract_cmd_para)
+                    clean_para, refs_map = clean_for_translation(para_text)
+                    if is_translatable_paragraph(clean_para):
+                        task = TranslationTask(
+                            task_id=next_task_id,
+                            index=len(result_parts),
+                            clean_text=clean_para,
+                            refs_map=refs_map,
+                        )
+                        next_task_id += 1
+                        tasks.append(task)
+                        result_parts.append(task)
+                        result_parts.append("")
+                result_parts.append('}' + rest[close_at + 1:])
+                in_abstract_cmd = False
+            else:
+                abstract_cmd_depth = depth
+                if rest.strip():
+                    abstract_cmd_para.append(rest.rstrip())
+            continue
+
+        if in_abstract_cmd:
+            depth = abstract_cmd_depth
+            close_at = None
+            for i, ch in enumerate(line):
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        close_at = i
+                        break
+            if close_at is not None:
+                content_here = line[:close_at].rstrip()
+                if content_here:
+                    abstract_cmd_para.append(content_here)
+                if abstract_cmd_para:
+                    para_text = "\n".join(abstract_cmd_para)
+                    result_parts.extend(abstract_cmd_para)
+                    clean_para, refs_map = clean_for_translation(para_text)
+                    if is_translatable_paragraph(clean_para):
+                        task = TranslationTask(
+                            task_id=next_task_id,
+                            index=len(result_parts),
+                            clean_text=clean_para,
+                            refs_map=refs_map,
+                        )
+                        next_task_id += 1
+                        tasks.append(task)
+                        result_parts.append(task)
+                        result_parts.append("")
+                result_parts.append('}' + line[close_at + 1:])
+                in_abstract_cmd = False
+            else:
+                abstract_cmd_depth = depth
+                abstract_cmd_para.append(line)
+            continue
 
         if not in_abstract and (not in_document or not after_maketitle):
             result_parts.append(line)

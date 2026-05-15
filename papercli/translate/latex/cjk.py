@@ -20,6 +20,10 @@ def add_cjk_support(
         return _add_xelatex_cjk_support(
             main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
         )
+    elif engine == TexEngine.LUALATEX:
+        return _add_lualatex_cjk_support(
+            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
+        )
     else:
         return _add_pdflatex_cjk_support(
             main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
@@ -50,6 +54,50 @@ def _add_xelatex_cjk_support(
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{xeCJK}}
 \setCJKmainfont{{PingFang SC}}
+\usepackage{{xcolor}}
+\definecolor{{transcolor}}{{gray}}{{{trans_gray}}}
+\newcommand{{\trans}}[1]{{{{{size_cmd}\color{{transcolor}}#1}}}}
+{watermark_packages}% === End Chinese Support ===
+
+"""
+        insert_pos = doc_begin_match.start()
+        main_tex_content = (
+            main_tex_content[:insert_pos] + cjk_config + main_tex_content[insert_pos:]
+        )
+
+    if arxiv_id and published_date:
+        main_tex_content = _add_watermark(
+            main_tex_content, arxiv_id, published_date, category
+        )
+
+    return main_tex_content
+
+
+def _add_lualatex_cjk_support(
+    main_tex_content: str,
+    arxiv_id: str | None = None,
+    published_date: str | None = None,
+    category: str | None = None,
+    trans_gray: float = 0.4,
+    trans_fontsize: str = "",
+) -> str:
+    """Add luatexja CJK support for LuaLaTeX engine."""
+    watermark_packages = ""
+    if arxiv_id and published_date:
+        watermark_packages = r"""
+% === arXiv Watermark Packages (auto-added) ===
+\usepackage{tikz}
+\usepackage{eso-pic}
+"""
+
+    size_cmd = f"\\{trans_fontsize}" if trans_fontsize and trans_fontsize != "normal" else ""
+    doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
+    if doc_begin_match:
+        cjk_config = rf"""
+% === Chinese Support (auto-added by translator) ===
+\usepackage{{luatexja}}
+\usepackage{{luatexja-fontspec}}
+\setmainjfont{{PingFang SC}}
 \usepackage{{xcolor}}
 \definecolor{{transcolor}}{{gray}}{{{trans_gray}}}
 \newcommand{{\trans}}[1]{{{{{size_cmd}\color{{transcolor}}#1}}}}
