@@ -71,6 +71,14 @@ def run_summary(paper_dir: Path, cfg: "SummarizeConfig", label: str = "") -> Non
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"{_slug(display_label)}.md"
 
+    if output_file.exists():
+        answer = input(f"Summary already exists: {output_file}\nRe-summarize? [y/N] ").strip().lower()
+        if answer != "y":
+            print(f"Opening existing summary: {output_file}")
+            if platform.system() == "Darwin":
+                subprocess.run(["open", str(output_file)])
+            return
+
     print(f"Running codex (model={cfg.model}, reasoning={cfg.reasoning_effort}) ...")
     result = subprocess.run(
         [
