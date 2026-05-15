@@ -26,7 +26,7 @@ class TranslateConfig:
     # Maximum concurrent API calls
     max_workers: int = 30
     # Continue from previous translation (reuse cached translations)
-    resume: bool = False
+    resume: bool = True
     # LaTeX engine: xelatex or pdflatex (default: auto-detect from document)
     engine: str = ""
     # Add Table of Contents, List of Tables, List of Figures after \maketitle

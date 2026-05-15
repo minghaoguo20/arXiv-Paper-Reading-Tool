@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import signal
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -128,6 +130,26 @@ def _reset_output_dir(paper_dir: Path, output_dir: Path) -> None:
         shutil.rmtree(cache_backup)
 
 
+def _run_latex(cmd: list[str], cwd: Path, timeout: int = 300) -> subprocess.CompletedProcess:
+    """Run a latex command, killing the entire process tree on timeout."""
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        preexec_fn=os.setsid,  # new process group so all children can be killed together
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+    except subprocess.TimeoutExpired:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        proc.communicate()
+        raise
+
+
 def _compile_with_engine(
     output_dir: Path, main_tex: Path, engine: TexEngine
 ) -> tuple[bool, str]:
@@ -140,14 +162,7 @@ def _compile_with_engine(
 
     for attempt in range(max_attempts):
         try:
-            result = subprocess.run(
-                compile_cmd,
-                cwd=output_dir,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                errors="replace",
-            )
+            result = _run_latex(compile_cmd, output_dir, timeout=300)
             pdf_path = output_dir / (main_tex.stem + ".pdf")
             xdv_path = output_dir / (main_tex.stem + ".xdv")
 
@@ -166,11 +181,9 @@ def _compile_with_engine(
             ):
                 print("  Converting XDV to PDF...")
                 try:
-                    subprocess.run(
+                    _run_latex(
                         ["xdvipdfmx", "-o", pdf_path.name, xdv_path.name],
-                        cwd=output_dir,
-                        capture_output=True,
-                        text=True,
+                        output_dir,
                         timeout=60,
                     )
                     if pdf_path.exists() and pdf_path.stat().st_size > 0:

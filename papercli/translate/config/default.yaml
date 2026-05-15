@@ -37,12 +37,12 @@ toc: false
 # Resume from previous translation / 断点续翻（复用缓存）
 # Reuse cached translations from previous runs
 # 复用之前运行的翻译缓存
-resume: false
+resume: true
 
 # Gray level for translated text / 译文灰度
 # 0.0 = black (darkest), 1.0 = white (invisible); override via --grey on CLI
 # 0.0 = 纯黑（最深），1.0 = 白（不可见）；命令行可用 --grey 覆盖
-trans_gray: 0.4
+trans_gray: 0.2
 
 # Font size for translated text / 译文字号
 # "" or "normal" = body text size; options: footnotesize, small, normalsize, large

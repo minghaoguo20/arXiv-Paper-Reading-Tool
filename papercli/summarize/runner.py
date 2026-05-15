@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import platform
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -80,7 +82,7 @@ def run_summary(paper_dir: Path, cfg: "SummarizeConfig", label: str = "") -> Non
             return
 
     print(f"Running codex (model={cfg.model}, reasoning={cfg.reasoning_effort}) ...")
-    result = subprocess.run(
+    proc = subprocess.Popen(
         [
             "codex", "exec",
             "-m", cfg.model,
@@ -90,11 +92,20 @@ def run_summary(paper_dir: Path, cfg: "SummarizeConfig", label: str = "") -> Non
             "--skip-git-repo-check",
             "-o", str(output_file),
         ],
-        input=full_input,
+        stdin=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         cwd=paper_dir,
+        preexec_fn=os.setsid,
     )
+    try:
+        proc.communicate(input=full_input, timeout=1800)  # 30 min ceiling
+    except subprocess.TimeoutExpired:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        proc.communicate()
+        print("codex timed out after 30 minutes")
+        return
+    result = proc
 
     if result.returncode != 0:
         print(f"codex exited with code {result.returncode}")

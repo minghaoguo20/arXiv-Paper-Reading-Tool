@@ -86,6 +86,17 @@ def _add_pdflatex_cjk_support(
 \usepackage{eso-pic}
 """
 
+    # Disable microtype font expansion before \documentclass so that classes
+    # loading microtype via \RequirePackage don't apply expansion to CJK bitmap fonts,
+    # which causes "auto expansion is only possible with scalable fonts" fatal errors.
+    docclass_match = re.search(r"(\\documentclass)", main_tex_content)
+    if docclass_match and r"\PassOptionsToPackage{expansion=false}{microtype}" not in main_tex_content:
+        main_tex_content = (
+            main_tex_content[:docclass_match.start()]
+            + "\\PassOptionsToPackage{expansion=false}{microtype}\n"
+            + main_tex_content[docclass_match.start():]
+        )
+
     size_cmd = f"\\{trans_fontsize}" if trans_fontsize and trans_fontsize != "normal" else ""
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
