@@ -82,32 +82,53 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": model_name,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    f"You are a professional translator specializing in academic papers. "
-                    f"Translate the following English text to fluent and native {target_lang}. "
-                    "Keep all LaTeX commands, math formulas, and citations intact. "
-                    "IMPORTANT: Do NOT translate or modify placeholders like [MATH_0], [REF_0], [CITE_0], [MACRO_0]. "
-                    "Keep them exactly as they appear. "
-                    "Only output the translation, nothing else."
-                ),
-            },
-            {"role": "user", "content": text},
-        ],
-    }
 
+    input_placeholders = set(re.findall(r"\[[A-Z]+_\d+\]", text))
+
+    def build_messages(correction: str | None = None) -> list[dict]:
+        system = (
+            f"You are a professional translator specializing in academic papers. "
+            f"Translate the following English text to fluent and native {target_lang}. "
+            "Keep all LaTeX commands, math formulas, and citations intact. "
+            "IMPORTANT: Do NOT translate or modify placeholders like [MATH_0], [REF_0], [CITE_0], [MACRO_0]. "
+            "Keep them exactly as they appear — same name, same number. "
+            "Only output the translation, nothing else."
+        )
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": text}]
+        if correction:
+            messages.append({"role": "assistant", "content": correction})
+            messages.append({"role": "user", "content": correction_prompt})
+        return messages
+
+    correction_prompt = (
+        "Your previous translation did not preserve all placeholders correctly. "
+        "Every placeholder (e.g. [MATH_0], [CITE_1], [REF_2]) must appear in the output "
+        "exactly as it appears in the source — same bracket format, same type, same number. "
+        "Do not rename, merge, drop, or add any placeholder. "
+        "Please retranslate with all placeholders kept verbatim."
+    )
+
+    last_result = text
     for attempt in range(max_retries):
         try:
+            is_retry = attempt > 0 and last_result != text
+            payload = {
+                "model": model_name,
+                "messages": build_messages(last_result if is_retry else None),
+            }
             response = requests.post(
                 api_url, headers=headers, data=json.dumps(payload), timeout=60
             )
             result = response.json()
             if "choices" in result:
-                return result["choices"][0]["message"]["content"]
+                translation = result["choices"][0]["message"]["content"]
+                output_placeholders = set(re.findall(r"\[[A-Z]+_\d+\]", translation))
+                if input_placeholders == output_placeholders:
+                    return translation
+                last_result = translation
+                if attempt < max_retries - 1:
+                    continue
+                return translation
             elif "error" in result:
                 print(f"API error: {result['error']}")
                 if attempt < max_retries - 1:

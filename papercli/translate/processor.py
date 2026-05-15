@@ -320,6 +320,8 @@ def _process_with_engine(
             arxiv_id=metadata.get("arxiv_id") if metadata else None,
             published_date=metadata.get("published") if metadata else None,
             category=metadata.get("category") if metadata else None,
+            trans_gray=cfg.trans_gray if cfg else 0.4,
+            trans_fontsize=cfg.trans_fontsize if cfg else "",
         )
         main_tex.write_text(main_content, encoding="utf-8")
 

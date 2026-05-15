@@ -11,16 +11,18 @@ def add_cjk_support(
     arxiv_id: str | None = None,
     published_date: str | None = None,
     category: str | None = None,
+    trans_gray: float = 0.4,
+    trans_fontsize: str = "",
 ) -> str:
     if "% === Chinese Support (auto-added by translator) ===" in main_tex_content:
         return main_tex_content
     if engine == TexEngine.XELATEX:
         return _add_xelatex_cjk_support(
-            main_tex_content, arxiv_id, published_date, category
+            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
         )
     else:
         return _add_pdflatex_cjk_support(
-            main_tex_content, arxiv_id, published_date, category
+            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
         )
 
 
@@ -29,6 +31,8 @@ def _add_xelatex_cjk_support(
     arxiv_id: str | None = None,
     published_date: str | None = None,
     category: str | None = None,
+    trans_gray: float = 0.4,
+    trans_fontsize: str = "",
 ) -> str:
     """Add xeCJK support for XeLaTeX engine."""
     watermark_packages = ""
@@ -39,6 +43,7 @@ def _add_xelatex_cjk_support(
 \usepackage{eso-pic}
 """
 
+    size_cmd = f"\\{trans_fontsize}" if trans_fontsize and trans_fontsize != "normal" else ""
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         cjk_config = rf"""
@@ -46,8 +51,8 @@ def _add_xelatex_cjk_support(
 \usepackage{{xeCJK}}
 \setCJKmainfont{{PingFang SC}}
 \usepackage{{xcolor}}
-\definecolor{{transcolor}}{{gray}}{{0.4}}
-\newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
+\definecolor{{transcolor}}{{gray}}{{{trans_gray}}}
+\newcommand{{\trans}}[1]{{{{{size_cmd}\color{{transcolor}}#1}}}}
 {watermark_packages}% === End Chinese Support ===
 
 """
@@ -69,6 +74,8 @@ def _add_pdflatex_cjk_support(
     arxiv_id: str | None = None,
     published_date: str | None = None,
     category: str | None = None,
+    trans_gray: float = 0.4,
+    trans_fontsize: str = "",
 ) -> str:
     """Add CJKutf8 support for pdfLaTeX engine."""
     watermark_packages = ""
@@ -79,14 +86,15 @@ def _add_pdflatex_cjk_support(
 \usepackage{eso-pic}
 """
 
+    size_cmd = f"\\{trans_fontsize}" if trans_fontsize and trans_fontsize != "normal" else ""
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         cjk_config = rf"""
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{CJKutf8}}
 \usepackage{{xcolor}}
-\definecolor{{transcolor}}{{gray}}{{0.4}}
-\newcommand{{\trans}}[1]{{{{\small\color{{transcolor}}#1}}}}
+\definecolor{{transcolor}}{{gray}}{{{trans_gray}}}
+\newcommand{{\trans}}[1]{{{{{size_cmd}\color{{transcolor}}#1}}}}
 {watermark_packages}% === End Chinese Support ===
 
 """

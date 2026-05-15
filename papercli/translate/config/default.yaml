@@ -38,3 +38,13 @@ toc: false
 # Reuse cached translations from previous runs
 # 复用之前运行的翻译缓存
 resume: false
+
+# Gray level for translated text / 译文灰度
+# 0.0 = black (darkest), 1.0 = white (invisible); 0.6 prints well
+# 0.0 = 纯黑（最深），1.0 = 白（不可见）；0.6 打印效果好
+trans_gray: 0.2
+
+# Font size for translated text / 译文字号
+# "" or "normal" = body text size; options: footnotesize, small, normalsize, large
+# "" 或 "normal" = 正文字号；可选: footnotesize, small, normalsize, large
+trans_fontsize: "normalsize"

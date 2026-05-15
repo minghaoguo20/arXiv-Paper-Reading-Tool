@@ -31,6 +31,11 @@ class TranslateConfig:
     engine: str = ""
     # Add Table of Contents, List of Tables, List of Figures after \maketitle
     toc: bool = False
+    # Gray level for translated text color (0.0=black, 1.0=white; 0.6 prints well)
+    trans_gray: float = 0.4
+    # Font size for translated text: "" or "normal" for body size, or any LaTeX size command
+    # e.g. "small", "footnotesize", "large"
+    trans_fontsize: str = ""
 
     _instance: "TranslateConfig" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
