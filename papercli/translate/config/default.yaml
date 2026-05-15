@@ -40,9 +40,9 @@ toc: false
 resume: false
 
 # Gray level for translated text / 译文灰度
-# 0.0 = black (darkest), 1.0 = white (invisible); 0.6 prints well
-# 0.0 = 纯黑（最深），1.0 = 白（不可见）；0.6 打印效果好
-trans_gray: 0.2
+# 0.0 = black (darkest), 1.0 = white (invisible); override via --grey on CLI
+# 0.0 = 纯黑（最深），1.0 = 白（不可见）；命令行可用 --grey 覆盖
+trans_gray: 0.4
 
 # Font size for translated text / 译文字号
 # "" or "normal" = body text size; options: footnotesize, small, normalsize, large

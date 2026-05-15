@@ -31,11 +31,13 @@ class TranslateConfig:
     engine: str = ""
     # Add Table of Contents, List of Tables, List of Figures after \maketitle
     toc: bool = False
-    # Gray level for translated text color (0.0=black, 1.0=white; 0.6 prints well)
+    # Gray level for translated text color (0.0=black, 1.0=white)
     trans_gray: float = 0.4
     # Font size for translated text: "" or "normal" for body size, or any LaTeX size command
     # e.g. "small", "footnotesize", "large"
     trans_fontsize: str = ""
+    # CLI-only override for trans_gray (highest priority); -1 means not set
+    grey: float = -1.0
 
     _instance: "TranslateConfig" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
@@ -51,6 +53,8 @@ class TranslateConfig:
                 if re.fullmatch(r"\d{4}\.\d{4,5}(?:v\d+)?", raw):
                     self.input = raw
                 break
+        if self.grey >= 0:
+            self.trans_gray = self.grey
         if self.model in ("x", "debug", "none"):
             self.model = "none"
             self.debug_mode = True
@@ -80,6 +84,7 @@ LaTeX Paper Translator - Common Commands:
   python run.py translate --input 2307.16789 --max_workers 20
   python run.py translate --input 2307.16789 --engine xelatex
   python run.py translate --input 2307.16789 --toc true
+  python run.py translate --input 2307.16789 --grey 0.2
 
 Config file:
   python run.py translate --config_path papercli/translate/config/default.yaml --input 2307.16789
