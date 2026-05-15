@@ -19,6 +19,8 @@ class Config:
     input: str = ""
     # Translation model (use "debug" for mock translation without API)
     model: str = "gpt-4.1-nano"
+    # API provider: auto (detect from env), rightcode, blt
+    provider: str = "auto"
     # Target language for translation (e.g., Chinese, Japanese, Korean, German)
     target_lang: str = "Chinese"
     # Maximum concurrent API calls
@@ -49,6 +51,13 @@ class Config:
             self.debug_mode = True
         elif self.model == "en":
             self.english_only_mode = True
+        # Default model for rightcode provider
+        import os as _os
+        if self.model == "gpt-4.1-nano" and (
+            self.provider == "rightcode"
+            or (self.provider == "auto" and _os.environ.get("RIGHTCODE_API"))
+        ):
+            self.model = "gpt-5.4-mini"
 
 
 def print_help_examples():
@@ -111,7 +120,10 @@ Configuration Files:
   Priority: CLI parameters > Config file > Default values
 
 Environment:
-  ONE_API    API key for OpenAI-compatible service (required unless --model x/debug/none)
+  ONE_API         API key for blt/OpenAI-compatible service
+  API_URL         Base URL for blt/OpenAI-compatible service
+  RIGHTCODE_API   API key for right.codes (auto-detected when set)
+  RIGHTCODE_URL   Base URL for right.codes (default: https://www.right.codes/codex/v1)
 """
     print(examples)
 

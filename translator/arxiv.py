@@ -1,13 +1,36 @@
 """arXiv paper download and extraction utilities."""
 
 import re
+import ssl
 import tarfile
 from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree
 
 import requests
+from requests.adapters import HTTPAdapter
 from tqdm import tqdm
+
+
+def _create_session() -> requests.Session:
+    """Create a requests session with SSL workarounds for servers that drop TLS connections early."""
+    session = requests.Session()
+    try:
+        from urllib3.util.ssl_ import create_urllib3_context
+
+        ctx = create_urllib3_context()
+        if hasattr(ssl, "OP_IGNORE_UNEXPECTED_EOF"):
+            ctx.options |= ssl.OP_IGNORE_UNEXPECTED_EOF
+
+        class _TLSAdapter(HTTPAdapter):
+            def init_poolmanager(self, *args, **kwargs):
+                kwargs["ssl_context"] = ctx
+                return super().init_poolmanager(*args, **kwargs)
+
+        session.mount("https://", _TLSAdapter())
+    except Exception:
+        pass
+    return session
 
 
 def get_arxiv_metadata(arxiv_id: str) -> dict | None:
@@ -25,7 +48,8 @@ def get_arxiv_metadata(arxiv_id: str) -> dict | None:
     api_url = f"http://export.arxiv.org/api/query?id_list={base_id}"
 
     try:
-        response = requests.get(api_url, timeout=10)
+        session = _create_session()
+        response = session.get(api_url, timeout=10)
         response.raise_for_status()
 
         # Parse XML response
@@ -119,8 +143,9 @@ def download_arxiv_source(arxiv_id: str, output_dir: Path) -> Path:
     print(f"  URL: {src_url}")
 
     try:
+        session = _create_session()
         # First, make a HEAD request to get the actual filename (with version)
-        head_response = requests.head(src_url, timeout=30, allow_redirects=True)
+        head_response = session.head(src_url, timeout=30, allow_redirects=True)
         head_response.raise_for_status()
 
         # Extract actual filename from content-disposition header
@@ -150,7 +175,7 @@ def download_arxiv_source(arxiv_id: str, output_dir: Path) -> Path:
             return archive_path
 
         # Download with streaming to handle large files
-        response = requests.get(src_url, stream=True, timeout=60)
+        response = session.get(src_url, stream=True, timeout=60)
         response.raise_for_status()
 
         # Get file size for progress bar

@@ -61,11 +61,25 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
         truncated = " ".join(words)
         return f"（测试翻译）{truncated}……"
 
-    api_key = os.environ.get("ONE_API")
-    if not api_key:
-        raise ValueError("ONE_API environment variable is required")
-    api_url = os.environ.get("API_URL", "https://api.openai.com/v1/chat/completions")
-    model_name = cfg.model if cfg else "gpt-5-nano"
+    provider = cfg.provider if cfg else "auto"
+    model_name = cfg.model if cfg else "gpt-4.1-nano"
+
+    # Resolve provider
+    use_rightcode = provider == "rightcode" or (
+        provider == "auto" and os.environ.get("RIGHTCODE_API")
+    )
+
+    if use_rightcode:
+        api_key = os.environ.get("RIGHTCODE_API")
+        if not api_key:
+            raise ValueError("RIGHTCODE_API environment variable is required")
+        base_url = os.environ.get("RIGHTCODE_URL", "https://www.right.codes/codex/v1")
+        api_url = base_url.rstrip("/") + "/chat/completions"
+    else:
+        api_key = os.environ.get("ONE_API")
+        if not api_key:
+            raise ValueError("ONE_API environment variable is required")
+        api_url = os.environ.get("API_URL", "https://api.openai.com/v1/chat/completions")
     headers = {
         "Accept": "application/json",
         "Authorization": f"Bearer {api_key}",
