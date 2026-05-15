@@ -1,4 +1,4 @@
-"""CLI configuration and entry point."""
+"""CLI configuration and entry point for translation."""
 
 import sys
 from dataclasses import dataclass, field
@@ -7,20 +7,20 @@ from pathlib import Path
 
 import draccus
 
-from translator.arxiv import download_arxiv_source, extract_archive, parse_arxiv_input
-from translator.processor import process_paper
+from papercli.arxiv import download_arxiv_source, extract_archive, parse_arxiv_input
+from papercli.translate.processor import process_paper
 
 
 @dataclass
-class Config:
+class TranslateConfig:
     """LaTeX paper translator configuration."""
 
     # Input source: arXiv ID (2307.16789), arXiv URL, local directory, or .tar.gz archive
     input: str = ""
     # Translation model (use "debug" for mock translation without API)
     model: str = "gpt-4.1-nano"
-    # API provider: auto (detect from env), rightcode, blt
-    provider: str = "auto"
+    # API provider: blt, rightcode, auto (detect from env)
+    provider: str = "blt"
     # Target language for translation (e.g., Chinese, Japanese, Korean, German)
     target_lang: str = "Chinese"
     # Maximum concurrent API calls
@@ -32,12 +32,12 @@ class Config:
     # Add Table of Contents, List of Tables, List of Figures after \maketitle
     toc: bool = False
 
-    _instance: "Config" = field(default=None, init=False, repr=False)
+    _instance: "TranslateConfig" = field(default=None, init=False, repr=False)
     debug_mode: bool = field(default=False, init=False, repr=False)
     english_only_mode: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
-        Config._instance = self
+        TranslateConfig._instance = self
         # draccus uses YAML to parse CLI values, which converts e.g. "2511.14460"
         # to float 2511.1446, dropping the trailing zero. Re-read from sys.argv directly.
         for i, arg in enumerate(sys.argv[:-1]):
@@ -51,7 +51,6 @@ class Config:
             self.debug_mode = True
         elif self.model == "en":
             self.english_only_mode = True
-        # Default model for rightcode provider
         import os as _os
         if self.model == "gpt-4.1-nano" and (
             self.provider == "rightcode"
@@ -60,80 +59,39 @@ class Config:
             self.model = "gpt-5.4-mini"
 
 
-def print_help_examples():
-    """Print common usage examples."""
-    examples = """
+def _print_help():
+    print("""
 LaTeX Paper Translator - Common Commands:
 
-  # Download and translate from arXiv (latest version)
-  python -m translator --input 2307.16789
+  python run.py translate --input 2307.16789
+  python run.py translate --input 2307.16789v2
+  python run.py translate --input https://arxiv.org/abs/2307.16789
+  python run.py translate --input tex/arXiv-2511.05271v4
+  python run.py translate --input tex/paper.tar.gz
+  python run.py translate --input 2307.16789 --model x          (debug/mock)
+  python run.py translate --input 2307.16789 --model gpt-4.1-mini
+  python run.py translate --input 2307.16789 --target_lang Japanese
+  python run.py translate --input 2307.16789 --resume true
+  python run.py translate --input 2307.16789 --max_workers 20
+  python run.py translate --input 2307.16789 --engine xelatex
+  python run.py translate --input 2307.16789 --toc true
 
-  # Download specific version
-  python -m translator --input 2307.16789v2
-
-  # From arXiv URL (abs/pdf/src/html all work)
-  python -m translator --input https://arxiv.org/abs/2307.16789
-  python -m translator --input https://arxiv.org/pdf/2307.16789
-
-  # From local directory
-  python -m translator --input tex/arXiv-2511.05271v4
-
-  # From local archive
-  python -m translator --input tex/paper.tar.gz
-
-  # Use configuration file (recommended)
-  python -m translator --config_path translator/config/default.yaml --input 2307.16789
-
-  # CLI parameters override config file settings
-  python -m translator --config_path translator/config/default.yaml --input 2307.16789 --model gpt-4.1-mini --target_lang Japanese
-
-  # Specify target language directly
-  python -m translator --input 2307.16789 --target_lang Korean
-
-  # Debug mode (mock translation, no API needed)
-  python -m translator --input 2307.16789 --model x
-
-  # Use different model
-  python -m translator --input 2307.16789 --model gpt-4.1-mini
-
-  # Resume interrupted translation (reuse cached translations)
-  python -m translator --input 2307.16789 --resume true
-
-  # Adjust concurrency (default: 30)
-  python -m translator --input 2307.16789 --max_workers 20
-
-  # Force specific LaTeX engine (default: auto-detect from document)
-  python -m translator --input 2307.16789 --engine xelatex
-  python -m translator --input 2307.16789 --engine pdflatex
-
-  # Add Table of Contents, List of Tables, List of Figures
-  python -m translator --input 2307.16789 --toc true
-
-Configuration Files:
-  Available config files:
-    - translator/config/default.yaml  (default template with detailed comments)
-
-  Create your own config:
-    cp translator/config/default.yaml my_config.yaml
-    python -m translator --config_path my_config.yaml --input 2307.16789
-
-  Priority: CLI parameters > Config file > Default values
+Config file:
+  python run.py translate --config_path papercli/translate/config/default.yaml --input 2307.16789
 
 Environment:
   ONE_API         API key for blt/OpenAI-compatible service
   API_URL         Base URL for blt/OpenAI-compatible service
   RIGHTCODE_API   API key for right.codes (auto-detected when set)
-  RIGHTCODE_URL   Base URL for right.codes (default: https://www.right.codes/codex/v1)
-"""
-    print(examples)
+  RIGHTCODE_URL   Base URL for right.codes
+""")
 
 
-@draccus.wrap(config_path="translator/config/default.yaml")
-def main(cfg: Config):
-    """Main entry point."""
-    # Show help if no input
+@draccus.wrap(config_path="papercli/translate/config/default.yaml")
+def main(cfg: TranslateConfig):
+    """Main entry point for translation."""
     if not cfg.input:
-        print_help_examples()
+        _print_help()
         sys.exit(0)
 
     input_arg = cfg.input
@@ -148,10 +106,8 @@ def main(cfg: Config):
     if not cfg.english_only_mode:
         print(f"Target language: {cfg.target_lang}")
 
-    # Check if input is an arXiv reference (ID or URL)
     arxiv_id = parse_arxiv_input(input_arg)
     if arxiv_id:
-        # Download from arXiv
         tex_dir = Path.cwd() / "tex"
         try:
             archive_path = download_arxiv_source(arxiv_id, tex_dir)
@@ -163,14 +119,11 @@ def main(cfg: Config):
             print(f"Error: {e}")
             sys.exit(1)
     else:
-        # Local file or directory
         input_path = Path(input_arg)
 
-        # Handle relative paths
         if not input_path.is_absolute():
             input_path = Path.cwd() / input_path
 
-        # Check if it's an archive
         if (
             input_path.suffix == ".gz"
             or input_path.name.endswith(".tar.gz")

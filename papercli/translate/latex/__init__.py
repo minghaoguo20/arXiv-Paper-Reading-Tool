@@ -1,7 +1,7 @@
 """LaTeX processing utilities."""
 
-from translator.latex.cjk import add_cjk_support, add_lot_lof, add_toc
-from translator.latex.engine import (
+from papercli.translate.latex.cjk import add_cjk_support, add_lot_lof, add_toc
+from papercli.translate.latex.engine import (
     TexEngine,
     add_font_fallbacks_to_file,
     detect_engine,
@@ -10,7 +10,7 @@ from translator.latex.engine import (
     parse_missing_fonts,
     parse_missing_packages,
 )
-from translator.latex.parser import (
+from papercli.translate.latex.parser import (
     FileParseResult,
     assemble_translated_file,
     clean_for_translation,

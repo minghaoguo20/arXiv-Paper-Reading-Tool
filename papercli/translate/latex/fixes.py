@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from translator.latex.engine import TexEngine
+from papercli.translate.latex.engine import TexEngine
 
 
 def fix_package_conflicts(output_dir: Path, engine: TexEngine) -> None:

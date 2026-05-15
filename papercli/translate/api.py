@@ -14,31 +14,30 @@ from typing import TYPE_CHECKING
 import requests
 from tqdm import tqdm
 
-from translator.cache import (
+from papercli.cache import (
     get_cached_translation,
     get_paragraph_hash,
     save_cached_translation,
 )
 
 if TYPE_CHECKING:
-    from translator.cli import Config
+    from papercli.translate.config import TranslateConfig
 
 
 @dataclass
 class TranslationTask:
     """A paragraph to be translated."""
 
-    task_id: int  # Global unique ID for translation result mapping
-    index: int  # Position in result_parts for file assembly
-    clean_text: str  # Cleaned text for translation API
-    refs_map: dict[str, str] = field(default_factory=dict)  # Placeholder -> original LaTeX
+    task_id: int
+    index: int
+    clean_text: str
+    refs_map: dict[str, str] = field(default_factory=dict)
 
 
-def get_config() -> "Config | None":
-    """Get the current Config instance."""
-    from translator.cli import Config
+def get_config() -> "TranslateConfig | None":
+    from papercli.translate.config import TranslateConfig
 
-    return Config._instance
+    return TranslateConfig._instance
 
 
 def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -> str:
@@ -48,14 +47,12 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
 
     cfg = get_config()
 
-    # Use target_lang from config if not explicitly provided
     if target_lang is None:
         target_lang = cfg.target_lang if cfg else "Chinese"
 
     if cfg and cfg.debug_mode:
-        # Return mock translation for testing (pure Chinese, no special chars)
         clean = re.sub(r"\\[a-zA-Z]+(\{[^}]*\}|\[[^\]]*\])*", "", text)
-        clean = re.sub(r"[{}\[\]$%&#_^~\\]", "", clean)  # Remove special chars
+        clean = re.sub(r"[{}\[\]$%&#_^~\\]", "", clean)
         clean = re.sub(r"\s+", " ", clean).strip()
         words = clean.split()[:15]
         truncated = " ".join(words)
@@ -64,7 +61,6 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
     provider = cfg.provider if cfg else "auto"
     model_name = cfg.model if cfg else "gpt-4.1-nano"
 
-    # Resolve provider
     use_rightcode = provider == "rightcode" or (
         provider == "auto" and os.environ.get("RIGHTCODE_API")
     )
@@ -79,7 +75,8 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
         api_key = os.environ.get("ONE_API")
         if not api_key:
             raise ValueError("ONE_API environment variable is required")
-        api_url = os.environ.get("API_URL", "https://api.openai.com/v1/chat/completions")
+        api_url = os.environ.get("API_URL", "https://api.bltcy.ai/v1/chat/completions")
+
     headers = {
         "Accept": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -116,7 +113,7 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
                 if attempt < max_retries - 1:
                     time.sleep(2**attempt)
                     continue
-            return text  # Return original on failure
+            return text
         except Exception:
             if attempt < max_retries - 1:
                 time.sleep(2**attempt)
@@ -141,7 +138,6 @@ def batch_translate(
     results = {}
     pending_tasks = []
 
-    # Check cache for each task (if output_dir provided)
     if output_dir:
         for task in tasks:
             h = get_paragraph_hash(task.clean_text)
@@ -159,7 +155,6 @@ def batch_translate(
     if not pending_tasks:
         return results
 
-    # Debug mode: sequential mock translation
     if cfg and cfg.debug_mode:
         for task, h in tqdm(pending_tasks, desc="Translating (debug)"):
             translation = translate(task.clean_text)
@@ -168,7 +163,6 @@ def batch_translate(
                 save_cached_translation(output_dir, h, translation)
         return results
 
-    # Translate pending paragraphs concurrently
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(translate, t.clean_text): (t, h) for t, h in pending_tasks
@@ -178,7 +172,6 @@ def batch_translate(
             try:
                 translation = future.result()
                 results[task.task_id] = translation
-                # Save immediately after each translation (atomic)
                 if output_dir and translation:
                     save_cached_translation(output_dir, h, translation)
             except Exception as e:

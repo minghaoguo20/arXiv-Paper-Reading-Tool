@@ -2,7 +2,7 @@
 
 import re
 
-from translator.latex.engine import TexEngine
+from papercli.translate.latex.engine import TexEngine
 
 
 def add_cjk_support(
@@ -31,7 +31,6 @@ def _add_xelatex_cjk_support(
     category: str | None = None,
 ) -> str:
     """Add xeCJK support for XeLaTeX engine."""
-    # Build watermark packages if needed
     watermark_packages = ""
     if arxiv_id and published_date:
         watermark_packages = r"""
@@ -40,7 +39,6 @@ def _add_xelatex_cjk_support(
 \usepackage{eso-pic}
 """
 
-    # Insert xeCJK BEFORE \begin{document}
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         cjk_config = rf"""
@@ -58,7 +56,6 @@ def _add_xelatex_cjk_support(
             main_tex_content[:insert_pos] + cjk_config + main_tex_content[insert_pos:]
         )
 
-    # Add watermark code after \begin{document} if metadata is provided
     if arxiv_id and published_date:
         main_tex_content = _add_watermark(
             main_tex_content, arxiv_id, published_date, category
@@ -74,7 +71,6 @@ def _add_pdflatex_cjk_support(
     category: str | None = None,
 ) -> str:
     """Add CJKutf8 support for pdfLaTeX engine."""
-    # Build watermark packages if needed
     watermark_packages = ""
     if arxiv_id and published_date:
         watermark_packages = r"""
@@ -83,7 +79,6 @@ def _add_pdflatex_cjk_support(
 \usepackage{eso-pic}
 """
 
-    # Insert CJKutf8 packages BEFORE \begin{document}
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         cjk_config = rf"""
@@ -100,7 +95,6 @@ def _add_pdflatex_cjk_support(
             main_tex_content[:insert_pos] + cjk_config + main_tex_content[insert_pos:]
         )
 
-    # Insert \begin{CJK*} after \begin{document}
     doc_begin_match = re.search(r"(\\begin\{document\})", main_tex_content)
     if doc_begin_match:
         insert_pos = doc_begin_match.end()
@@ -110,13 +104,11 @@ def _add_pdflatex_cjk_support(
             + main_tex_content[insert_pos:]
         )
 
-    # Add watermark code if metadata is provided
     if arxiv_id and published_date:
         main_tex_content = _add_watermark(
             main_tex_content, arxiv_id, published_date, category
         )
 
-    # Insert \end{CJK*} before \end{document}
     end_doc_match = re.search(r"(\\end\{document\})", main_tex_content)
     if end_doc_match:
         insert_pos = end_doc_match.start()
@@ -136,7 +128,6 @@ def _add_watermark(
     category: str | None,
 ) -> str:
     """Add arXiv watermark after \\begin{document}."""
-    # Build watermark label
     cat_str = f" [{category}]" if category else ""
     watermark_label = f"arXiv:{arxiv_id}{cat_str} {published_date}"
 
@@ -155,8 +146,6 @@ def _add_watermark(
 }}
 % === End arXiv Watermark ===
 """
-    # Insert after \begin{document} (and after CJK begin if present)
-    # Look for CJK begin first
     cjk_begin_match = re.search(r"(\\begin\{CJK\}\{UTF8\}\{gbsn\}\n)", content)
     if cjk_begin_match:
         insert_pos = cjk_begin_match.end()
@@ -171,11 +160,7 @@ def _add_watermark(
 
 
 def add_toc(content: str) -> str:
-    """
-    Add Table of Contents at the end of document (after LOT/LOF).
-
-    Skips insertion if \\tableofcontents already exists.
-    """
+    """Add Table of Contents at the end of document. Skips if already present."""
     if re.search(r"\\tableofcontents\b", content):
         return content
 
@@ -186,7 +171,6 @@ def add_toc(content: str) -> str:
 \tableofcontents
 % === End TOC ===
 """
-    # Find \end{document} and insert before it
     end_doc_match = re.search(r"(\\end\{document\})", content)
     if end_doc_match:
         insert_pos = end_doc_match.start()
@@ -196,12 +180,7 @@ def add_toc(content: str) -> str:
 
 
 def add_lot_lof(content: str) -> str:
-    """
-    Add List of Tables and List of Figures at the end of document.
-
-    Uses \\phantomsection to ensure hyperref links to correct pages.
-    Skips insertion if these commands already exist.
-    """
+    """Add List of Tables and List of Figures at the end of document."""
     if re.search(r"\\listoftables\b", content):
         return content
     if re.search(r"\\listoffigures\b", content):
@@ -218,7 +197,6 @@ def add_lot_lof(content: str) -> str:
 \listoffigures
 % === End LOT/LOF ===
 """
-    # Find \end{document} and insert before it
     end_doc_match = re.search(r"(\\end\{document\})", content)
     if end_doc_match:
         insert_pos = end_doc_match.start()

@@ -8,9 +8,9 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from translator.api import batch_translate
-from translator.arxiv import get_arxiv_metadata
-from translator.latex import (
+from papercli.translate.api import batch_translate
+from papercli.arxiv import get_arxiv_metadata
+from papercli.translate.latex import (
     TexEngine,
     add_cjk_support,
     add_lot_lof,
@@ -26,34 +26,20 @@ from translator.latex import (
 )
 
 if TYPE_CHECKING:
-    from translator.cli import Config
+    from papercli.translate.config import TranslateConfig
 
 
-def get_config() -> "Config | None":
-    """Get the current Config instance."""
-    from translator.cli import Config
+def get_config() -> "TranslateConfig | None":
+    from papercli.translate.config import TranslateConfig
 
-    return Config._instance
+    return TranslateConfig._instance
 
 
 def extract_arxiv_id_from_path(paper_dir: Path) -> str | None:
-    """
-    Extract arXiv ID from paper directory name.
-
-    Directory names are typically like:
-    - arXiv-2511.05271v4
-    - 2511.05271v4
-    - 2511.05271
-
-    Returns:
-        arXiv ID string or None if not found.
-    """
+    """Extract arXiv ID from paper directory name."""
     name = paper_dir.name
-
-    # Pattern for arXiv ID: YYMM.NNNNN or YYMM.NNNNNvN
     arxiv_pattern = r"(\d{4}\.\d{4,5}(?:v\d+)?)"
     match = re.search(arxiv_pattern, name)
-
     if match:
         return match.group(1)
     return None
@@ -62,13 +48,11 @@ def extract_arxiv_id_from_path(paper_dir: Path) -> str | None:
 def is_preamble_file(filepath: Path) -> bool:
     """Check if a file is a preamble/config file (should not be translated)."""
     name = filepath.stem.lower()
-    # Skip by filename
     if any(
         skip in name
         for skip in ["config", "preamble", "header", "macro", "command", "setup"]
     ):
         return True
-    # Check content - if mostly \usepackage/\def/\newcommand, it's preamble
     try:
         content = filepath.read_text(encoding="utf-8", errors="replace")
         lines = [
@@ -86,7 +70,6 @@ def is_preamble_file(filepath: Path) -> bool:
                 line,
             )
         )
-        # If more than 50% are preamble commands, skip
         if preamble_cmds / len(lines) > 0.5:
             return True
     except Exception:
@@ -103,28 +86,22 @@ def find_included_files(tex_file: Path, base_dir: Path, visited: set) -> list[Pa
     included = []
     try:
         content = tex_file.read_text(encoding="utf-8", errors="replace")
-        # Find \input{...} and \include{...}
         patterns = [r"\\input\{([^}]+)\}", r"\\include\{([^}]+)\}"]
         for pattern in patterns:
             for match in re.finditer(pattern, content):
                 ref = match.group(1).strip()
-                # Skip common non-translatable includes
                 if any(
                     skip in ref.lower()
                     for skip in ["table", "bib", "sty", "cls", "bbl", "fig"]
                 ):
                     continue
-                # Add .tex extension if missing
                 if not ref.endswith(".tex"):
                     ref += ".tex"
-                # Resolve path relative to base_dir
                 inc_path = base_dir / ref
                 if inc_path.exists() and inc_path not in visited:
-                    # Skip preamble/config files
                     if is_preamble_file(inc_path):
                         continue
                     included.append(inc_path)
-                    # Recursively find includes in this file
                     included.extend(find_included_files(inc_path, base_dir, visited))
     except Exception:
         pass
@@ -132,29 +109,20 @@ def find_included_files(tex_file: Path, base_dir: Path, visited: set) -> list[Pa
 
 
 def _reset_output_dir(paper_dir: Path, output_dir: Path) -> None:
-    """
-    Reset output directory while preserving translation cache.
-
-    Args:
-        paper_dir: Original paper directory.
-        output_dir: Output directory to reset.
-    """
+    """Reset output directory while preserving translation cache."""
     cache_dir = output_dir / ".translations"
     cache_backup = None
 
-    # Backup cache if it exists
     if cache_dir.exists():
         cache_backup = paper_dir.parent / f".translations_backup_{paper_dir.name}"
         if cache_backup.exists():
             shutil.rmtree(cache_backup)
         shutil.copytree(cache_dir, cache_backup)
 
-    # Reset output directory
     if output_dir.exists():
         shutil.rmtree(output_dir)
     shutil.copytree(paper_dir, output_dir)
 
-    # Restore cache
     if cache_backup and cache_backup.exists():
         shutil.copytree(cache_backup, output_dir / ".translations")
         shutil.rmtree(cache_backup)
@@ -163,21 +131,11 @@ def _reset_output_dir(paper_dir: Path, output_dir: Path) -> None:
 def _compile_with_engine(
     output_dir: Path, main_tex: Path, engine: TexEngine
 ) -> tuple[bool, str]:
-    """
-    Compile document with specified engine.
-
-    Args:
-        output_dir: Directory containing the document.
-        main_tex: Path to main tex file.
-        engine: LaTeX engine to use.
-
-    Returns:
-        Tuple of (success, error_output).
-    """
+    """Compile document with specified engine."""
     compile_cmd = get_compile_command(engine, main_tex.name)
     max_attempts = 20
     installed_packages: set[str] = set()
-    fixed_fonts: set[str] = set()  # Track fonts we've added fallbacks for
+    fixed_fonts: set[str] = set()
     last_output = ""
 
     for attempt in range(max_attempts):
@@ -193,8 +151,6 @@ def _compile_with_engine(
             pdf_path = output_dir / (main_tex.stem + ".pdf")
             xdv_path = output_dir / (main_tex.stem + ".xdv")
 
-            # latexmk handles the full compilation process including BibTeX
-            # Check if PDF was generated (even if latexmk reported warnings)
             if pdf_path.exists() and pdf_path.stat().st_size > 0:
                 if result.returncode == 0:
                     print(f"✓ PDF generated: {pdf_path}")
@@ -203,7 +159,6 @@ def _compile_with_engine(
                 subprocess.run(["open", str(output_dir)])
                 return True, ""
 
-            # For XeLaTeX, try converting .xdv to PDF if PDF doesn't exist
             if (
                 engine == TexEngine.XELATEX
                 and xdv_path.exists()
@@ -231,7 +186,6 @@ def _compile_with_engine(
             if result.returncode != 0:
                 last_output = result.stdout + result.stderr
 
-                # First, try to install missing packages
                 missing = parse_missing_packages(last_output)
                 new_missing = [pkg for pkg in missing if pkg not in installed_packages]
 
@@ -243,15 +197,12 @@ def _compile_with_engine(
                         print(f"  Retrying compilation (attempt {attempt + 2})...")
                         continue
 
-                # Detect CJK fontset incompatibility with pdflatex (e.g. fandol requires
-                # XeLaTeX). Fail fast so the caller can switch engines immediately.
                 if engine == TexEngine.PDFLATEX and re.search(
                     r"fontset\s*`.+?'\s*is unavailable in current", last_output
                 ):
                     print("  CJK fontset incompatible with pdflatex, engine switch required")
                     return False, last_output
 
-                # Second, check for font errors and add fallbacks
                 if engine == TexEngine.PDFLATEX and attempt < max_attempts - 1:
                     missing_fonts = parse_missing_fonts(last_output)
                     new_fonts = [f for f in missing_fonts if f not in fixed_fonts]
@@ -263,7 +214,6 @@ def _compile_with_engine(
                         print(f"  Added font fallbacks, retrying compilation...")
                         continue
 
-                # Check one more time if PDF exists
                 if pdf_path.exists() and pdf_path.stat().st_size > 0:
                     print(f"✓ PDF generated (with warnings): {pdf_path}")
                     subprocess.run(["open", str(output_dir)])
@@ -285,31 +235,17 @@ def _process_with_engine(
     paper_dir: Path,
     output_dir: Path,
     engine: TexEngine,
-    cfg: "Config | None",
+    cfg: "TranslateConfig | None",
     metadata: dict | None,
     is_retry: bool = False,
 ) -> tuple[bool, str]:
-    """
-    Process paper with a specific engine.
-
-    Args:
-        paper_dir: Original paper directory.
-        output_dir: Output directory.
-        engine: LaTeX engine to use.
-        cfg: Configuration object.
-        metadata: arXiv metadata.
-        is_retry: Whether this is a retry with a different engine.
-
-    Returns:
-        Tuple of (success, error_output).
-    """
+    """Process paper with a specific engine."""
     if is_retry:
         print(f"\n{'='*50}")
         print(f"Retrying with {engine.value}...")
         print(f"{'='*50}")
         _reset_output_dir(paper_dir, output_dir)
 
-    # Find main tex file
     main_tex = None
     tex_files = list(output_dir.glob("*.tex"))
     for tex_file in tex_files:
@@ -326,12 +262,10 @@ def _process_with_engine(
     english_only = cfg and cfg.english_only_mode
 
     if not english_only:
-        # Find included files
         visited: set[Path] = set()
         included_files = find_included_files(main_tex, output_dir, visited)
 
-        # === Phase 1: Parse all files ===
-        from translator.latex.parser import FileParseResult
+        from papercli.translate.latex.parser import FileParseResult
 
         all_tasks = []
         file_results: dict[Path, FileParseResult] = {}
@@ -363,25 +297,21 @@ def _process_with_engine(
 
         print(f"Collected {len(all_tasks)} paragraphs from {len(file_results)} files")
 
-        # === Phase 2: Batch translate ===
         max_workers = cfg.max_workers if cfg else 10
         translations = batch_translate(all_tasks, output_dir, max_workers)
 
-        # === Phase 3: Assemble files ===
         print("Assembling translated files...")
         for file_path, parse_result in file_results.items():
             final_content = assemble_translated_file(parse_result, translations)
             file_path.write_text(final_content, encoding="utf-8")
 
-        # Add TOC/LOT/LOF if enabled (after translation, before CJK wrapping)
         if cfg and cfg.toc:
             print("Adding List of Tables/Figures and Table of Contents...")
             main_content = main_tex.read_text(encoding="utf-8")
-            main_content = add_toc(main_content)  # TOC before LOT/LOF
-            main_content = add_lot_lof(main_content)  # LOT/LOF at end
+            main_content = add_toc(main_content)
+            main_content = add_lot_lof(main_content)
             main_tex.write_text(main_content, encoding="utf-8")
 
-        # Add CJK support last so \end{CJK*} wraps TOC/LOF/LOT content
         print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
         main_content = main_tex.read_text(encoding="utf-8")
         main_content = add_cjk_support(
@@ -393,7 +323,6 @@ def _process_with_engine(
         )
         main_tex.write_text(main_content, encoding="utf-8")
 
-    # === Phase 4: Compile ===
     print(f"\nCompiling with {engine.value}...")
     return _compile_with_engine(output_dir, main_tex, engine)
 
@@ -403,12 +332,10 @@ def process_paper(paper_dir: Path) -> None:
     cfg = get_config()
     print(f"Processing: {paper_dir.name}")
 
-    # Create output directory with copy of paper
     suffix = "_compiled" if (cfg and cfg.english_only_mode) else "_bilingual"
     output_dir = paper_dir.parent / f"{paper_dir.name}{suffix}"
 
     if cfg and cfg.resume and output_dir.exists():
-        # Resume mode: reset source files but keep cache
         cache_dir = output_dir / ".translations"
         cached_count = 0
         if cache_dir.exists():
@@ -418,23 +345,20 @@ def process_paper(paper_dir: Path) -> None:
         if cached_count > 0:
             print(f"  Found {cached_count} cached translations")
     else:
-        # Fresh start: remove old and copy new
         if output_dir.exists():
             shutil.rmtree(output_dir)
         shutil.copytree(paper_dir, output_dir)
         print(f"Copied to: {output_dir}")
 
-    # Detect source file's preferred engine
     detected_engine = detect_engine(output_dir)
     if detected_engine == TexEngine.PDFLATEX:
-        color = "\033[1;33m"  # Bold Yellow
+        color = "\033[1;33m"
         hint = "pdfLaTeX features detected (fontenc, inputenc, etc.)"
     else:
-        color = "\033[1;36m"  # Bold Cyan
+        color = "\033[1;36m"
         hint = "XeLaTeX compatible (default)"
     print(f"Source analysis: {color}[{detected_engine.value}]\033[0m - {hint}")
 
-    # Select engine: user-specified or detected from document
     engine_mode = cfg.engine if cfg else ""
     if engine_mode == "xelatex":
         engine = TexEngine.XELATEX
@@ -446,7 +370,6 @@ def process_paper(paper_dir: Path) -> None:
         engine = detected_engine
         print(f"Engine: \033[1;32m[{engine.value}]\033[0m (detected from document)")
 
-    # Get arXiv metadata for watermark
     arxiv_id = extract_arxiv_id_from_path(paper_dir)
     metadata = None
     if arxiv_id:
