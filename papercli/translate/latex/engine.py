@@ -111,6 +111,17 @@ def detect_engine(output_dir: Path) -> TexEngine:
     if re.search(r"\\usepackage[^{]*\{CJKutf8\}", all_content):
         return TexEngine.PDFLATEX
 
+    # pdfLaTeX-only packages — these use pdflatex primitives and won't work with XeLaTeX
+    pdflatex_only_packages = [
+        r"\\usepackage[^{]*\{axessibility\}",   # loads glyphtounicode / pdflatex primitives
+        r"\\usepackage[^{]*\{pdfpages\}",
+        r"\\usepackage[^{]*\{pdfcomment\}",
+        r"\\usepackage[^{]*\{pdf14\}",
+    ]
+    for pattern in pdflatex_only_packages:
+        if re.search(pattern, all_content):
+            return TexEngine.PDFLATEX
+
     # Check for LuaLaTeX-specific packages/commands
     lualatex_indicators = [
         r"\\usepackage\{luatexja\}",
