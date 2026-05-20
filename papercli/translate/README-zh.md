@@ -68,12 +68,12 @@ python run.py translate --config_path papercli/translate/config/default.yaml --i
 
 | 变量 | 说明 |
 |---|---|
-| `ONE_API` | blt / OpenAI 兼容服务的 API key |
-| `API_URL` | blt / OpenAI 兼容服务的 base URL（默认 `https://api.openai.com/v1/chat/completions`） |
+| `MY_API_KEY` | blt / OpenAI 兼容服务的 API key |
+| `MY_API_URL` | blt / OpenAI 兼容服务的 base URL（默认 `https://api.openai.com/v1/chat/completions`） |
 | `RIGHTCODE_API` | right.codes 服务的 API key（设置后自动切换到该提供商） |
 | `RIGHTCODE_URL` | right.codes 的 base URL（默认 `https://www.right.codes/codex/v1`） |
 
-`provider=auto` 时：若 `RIGHTCODE_API` 已设置则优先使用 rightcode，否则使用 `ONE_API`。
+`provider=auto` 时：若 `RIGHTCODE_API` 已设置则优先使用 rightcode，否则使用 `MY_API_KEY`。
 
 ## 输入格式
 
@@ -149,7 +149,7 @@ latexmk -pdf -bibtex -f -interaction=nonstopmode -file-line-error main.tex
 查看终端错误信息。常见原因：字体缺失（程序自动添加回退方案）、包冲突（程序自动修复 subfigure/natbib/CJK 等冲突）、缺失包（程序自动安装）。XeLaTeX 失败时程序会询问是否切换到 pdfLaTeX。
 
 **如何更换翻译 API？**
-设置环境变量 `API_URL`，需兼容 OpenAI 格式。
+设置环境变量 `MY_API_URL`，需兼容 OpenAI 格式。
 
 **翻译会修改原始文件吗？**
 不会。原始文件保留在 `tex/{id}/`，所有修改都在 `tex/{id}_bilingual/` 中进行。

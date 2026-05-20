@@ -19,8 +19,6 @@ class TranslateConfig:
     input: str = ""
     # Translation model (use "debug" for mock translation without API)
     model: str = "gpt-4.1-nano"
-    # API provider: blt, rightcode, auto (detect from env)
-    provider: str = "blt"
     # Target language for translation (e.g., Chinese, Japanese, Korean, German)
     target_lang: str = "Chinese"
     # Maximum concurrent API calls
@@ -60,12 +58,6 @@ class TranslateConfig:
             self.debug_mode = True
         elif self.model == "en":
             self.english_only_mode = True
-        import os as _os
-        if self.model == "gpt-4.1-nano" and (
-            self.provider == "rightcode"
-            or (self.provider == "auto" and _os.environ.get("RIGHTCODE_API"))
-        ):
-            self.model = "gpt-5.4-mini"
 
 
 def _print_help():
@@ -90,10 +82,8 @@ Config file:
   python run.py translate --config_path papercli/translate/config/default.yaml --input 2307.16789
 
 Environment:
-  ONE_API         API key for blt/OpenAI-compatible service
-  API_URL         Base URL for blt/OpenAI-compatible service
-  RIGHTCODE_API   API key for right.codes (auto-detected when set)
-  RIGHTCODE_URL   Base URL for right.codes
+  MY_API_KEY         API key (OpenAI-compatible service)
+  MY_API_URL         Base URL (OpenAI-compatible service)
 """)
 
 

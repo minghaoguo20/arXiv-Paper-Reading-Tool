@@ -113,7 +113,7 @@ def clean_for_translation(text: str) -> tuple[str, dict[str, str]]:
         refs_map[placeholder] = match
         text = text.replace(match, placeholder, 1)
 
-    ref_matches = re.findall(r"~?\\ref\s*\{[^}]*\}", text)
+    ref_matches = re.findall(r"~?\\(?:Cref|cref|eqref|autoref|ref)\s*\{[^}]*\}", text)
     for i, match in enumerate(ref_matches):
         placeholder = f"[REF_{i}]"
         refs_map[placeholder] = match

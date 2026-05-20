@@ -216,6 +216,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 .DS_Store
+CLAUDE.md
 TODO.md
 .claude
 tex

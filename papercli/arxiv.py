@@ -45,11 +45,11 @@ def get_arxiv_metadata(arxiv_id: str) -> dict | None:
     """
     # Strip version for API query (API returns latest version info)
     base_id = re.sub(r"v\d+$", "", arxiv_id)
-    api_url = f"http://export.arxiv.org/api/query?id_list={base_id}"
+    MY_API_URL = f"http://export.arxiv.org/api/query?id_list={base_id}"
 
     try:
         session = _create_session()
-        response = session.get(api_url, timeout=10)
+        response = session.get(MY_API_URL, timeout=10)
         response.raise_for_status()
 
         # Parse XML response

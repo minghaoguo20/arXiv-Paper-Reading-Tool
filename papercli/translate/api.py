@@ -58,24 +58,12 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
         truncated = " ".join(words)
         return f"（测试翻译）{truncated}……"
 
-    provider = cfg.provider if cfg else "auto"
     model_name = cfg.model if cfg else "gpt-4.1-nano"
 
-    use_rightcode = provider == "rightcode" or (
-        provider == "auto" and os.environ.get("RIGHTCODE_API")
-    )
-
-    if use_rightcode:
-        api_key = os.environ.get("RIGHTCODE_API")
-        if not api_key:
-            raise ValueError("RIGHTCODE_API environment variable is required")
-        base_url = os.environ.get("RIGHTCODE_URL", "https://www.right.codes/codex/v1")
-        api_url = base_url.rstrip("/") + "/chat/completions"
-    else:
-        api_key = os.environ.get("ONE_API")
-        if not api_key:
-            raise ValueError("ONE_API environment variable is required")
-        api_url = os.environ.get("API_URL", "https://api.bltcy.ai/v1/chat/completions")
+    api_key = os.environ.get("MY_API_KEY")
+    if not api_key:
+        raise ValueError("MY_API_KEY environment variable is required")
+    MY_API_URL = os.environ.get("MY_API_URL", "https://api.openai.com/v1/chat/completions")
 
     headers = {
         "Accept": "application/json",
@@ -117,7 +105,7 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
                 "messages": build_messages(last_result if is_retry else None),
             }
             response = requests.post(
-                api_url, headers=headers, data=json.dumps(payload), timeout=60
+                MY_API_URL, headers=headers, data=json.dumps(payload), timeout=60
             )
             result = response.json()
             if "choices" in result:
