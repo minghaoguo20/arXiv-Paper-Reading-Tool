@@ -162,10 +162,10 @@ def detect_engine(output_dir: Path) -> TexEngine:
         if "xelatex" in tex_file.stem.lower():
             return TexEngine.XELATEX
 
-    # Check for pdfLaTeX-specific features
+    # Check for pdfLaTeX-specific primitives (fontenc/inputenc are excluded because
+    # they are template boilerplate that appears in many XeLaTeX documents too —
+    # XeLaTeX silently ignores them, so they are not reliable engine signals)
     pdflatex_indicators = [
-        r"\\usepackage\[T1\]\{fontenc\}",
-        r"\\usepackage\[utf8\]\{inputenc\}",
         r"\\DeclareUnicodeCharacter",
         r"\\pdfoutput\s*=\s*1",
         r"\\pdfinfo",
@@ -178,15 +178,15 @@ def detect_engine(output_dir: Path) -> TexEngine:
         if re.search(pattern, all_content):
             pdflatex_score += 1
 
-    # If document has multiple pdfLaTeX-specific features, use pdfLaTeX
-    if pdflatex_score >= 2:
+    # Any single genuinely pdfLaTeX-specific primitive is sufficient
+    if pdflatex_score >= 1:
         return TexEngine.PDFLATEX
 
     # Default to XeLaTeX (better Unicode/CJK support)
     return TexEngine.XELATEX
 
 
-def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
+def get_compile_command(engine: TexEngine, tex_file: str, use_bibtex: bool = True) -> list[str]:
     """
     Get the compilation command for the given engine.
 
@@ -195,15 +195,18 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
     Args:
         engine: The TeX engine to use.
         tex_file: Name of the main tex file.
+        use_bibtex: Whether to run BibTeX. Set to False when no .bib file exists
+            so that a pre-compiled .bbl is not overwritten by a failing bibtex run.
 
     Returns:
         Command list for subprocess.run.
     """
+    bibtex_flag = ["-bibtex"] if use_bibtex else ["-bibtex-"]
     if engine == TexEngine.PDFLATEX:
         return [
             "latexmk",
             "-pdf",
-            "-bibtex",
+            *bibtex_flag,
             "-f",
             "-interaction=nonstopmode",
             "-file-line-error",
@@ -213,7 +216,7 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
         return [
             "latexmk",
             "-lualatex",
-            "-bibtex",
+            *bibtex_flag,
             "-f",
             "-interaction=nonstopmode",
             "-file-line-error",
@@ -223,7 +226,7 @@ def get_compile_command(engine: TexEngine, tex_file: str) -> list[str]:
         return [
             "latexmk",
             "-xelatex",
-            "-bibtex",
+            *bibtex_flag,
             "-f",
             "-interaction=nonstopmode",
             "-file-line-error",

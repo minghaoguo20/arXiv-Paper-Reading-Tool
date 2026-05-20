@@ -159,7 +159,8 @@ def _compile_with_engine(
     # even when the main tex file lives in a subdirectory (e.g. acl/acl_latex.tex).
     compile_dir = output_dir
     tex_rel_path = str(main_tex.relative_to(output_dir))
-    compile_cmd = get_compile_command(engine, tex_rel_path)
+    has_bib = bool(list(output_dir.glob("**/*.bib")))
+    compile_cmd = get_compile_command(engine, tex_rel_path, use_bibtex=has_bib)
     max_attempts = 20
     installed_packages: set[str] = set()
     fixed_fonts: set[str] = set()
