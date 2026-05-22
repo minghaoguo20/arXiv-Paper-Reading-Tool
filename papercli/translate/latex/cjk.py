@@ -13,20 +13,23 @@ def add_cjk_support(
     category: str | None = None,
     trans_gray: float = 0.4,
     trans_fontsize: str = "",
+    font_xelatex: str = "PingFang SC",
+    font_lualatex: str = "PingFang SC",
+    font_pdflatex: str = "gbsn",
 ) -> str:
     if "% === Chinese Support (auto-added by translator) ===" in main_tex_content:
         return main_tex_content
     if engine == TexEngine.XELATEX:
         return _add_xelatex_cjk_support(
-            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
+            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize, font_xelatex
         )
     elif engine == TexEngine.LUALATEX:
         return _add_lualatex_cjk_support(
-            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
+            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize, font_lualatex
         )
     else:
         return _add_pdflatex_cjk_support(
-            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize
+            main_tex_content, arxiv_id, published_date, category, trans_gray, trans_fontsize, font_pdflatex
         )
 
 
@@ -37,6 +40,7 @@ def _add_xelatex_cjk_support(
     category: str | None = None,
     trans_gray: float = 0.4,
     trans_fontsize: str = "",
+    font: str = "PingFang SC",
 ) -> str:
     """Add xeCJK support for XeLaTeX engine."""
     watermark_packages = ""
@@ -53,7 +57,7 @@ def _add_xelatex_cjk_support(
         cjk_config = rf"""
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{xeCJK}}
-\setCJKmainfont{{PingFang SC}}
+\setCJKmainfont{{{font}}}
 \usepackage{{xcolor}}
 \definecolor{{transcolor}}{{gray}}{{{trans_gray}}}
 \newcommand{{\trans}}[1]{{{{{size_cmd}\color{{transcolor}}#1}}}}
@@ -80,6 +84,7 @@ def _add_lualatex_cjk_support(
     category: str | None = None,
     trans_gray: float = 0.4,
     trans_fontsize: str = "",
+    font: str = "PingFang SC",
 ) -> str:
     """Add luatexja CJK support for LuaLaTeX engine."""
     watermark_packages = ""
@@ -97,7 +102,7 @@ def _add_lualatex_cjk_support(
 % === Chinese Support (auto-added by translator) ===
 \usepackage{{luatexja}}
 \usepackage{{luatexja-fontspec}}
-\setmainjfont{{PingFang SC}}
+\setmainjfont{{{font}}}
 \usepackage{{xcolor}}
 \definecolor{{transcolor}}{{gray}}{{{trans_gray}}}
 \newcommand{{\trans}}[1]{{{{{size_cmd}\color{{transcolor}}#1}}}}
@@ -124,6 +129,7 @@ def _add_pdflatex_cjk_support(
     category: str | None = None,
     trans_gray: float = 0.4,
     trans_fontsize: str = "",
+    font: str = "gbsn",
 ) -> str:
     """Add CJKutf8 support for pdfLaTeX engine."""
     watermark_packages = ""
@@ -167,7 +173,7 @@ def _add_pdflatex_cjk_support(
         insert_pos = doc_begin_match.end()
         main_tex_content = (
             main_tex_content[:insert_pos]
-            + "\n\\begin{CJK*}{UTF8}{gbsn}"
+            + f"\n\\begin{{CJK*}}{{UTF8}}{{{font}}}"
             + main_tex_content[insert_pos:]
         )
 

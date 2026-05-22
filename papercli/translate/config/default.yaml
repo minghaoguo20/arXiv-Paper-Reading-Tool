@@ -25,9 +25,9 @@ target_lang: Chinese
 max_workers: 30
 
 # LaTeX compilation engine / LaTeX 编译引擎
-# Options: auto (XeLaTeX with pdfLaTeX fallback), xelatex, pdflatex
-# 可选项: auto (XeLaTeX，失败时回退到 pdfLaTeX), xelatex, pdflatex
-engine: auto
+# Options: xelatex, pdflatex, lualatex (leave empty to auto-detect from document)
+# 可选项: xelatex, pdflatex, lualatex（留空则从文档自动检测）
+engine: ""
 
 # Add Table of Contents and Lists / 添加目录和图表列表
 # Adds TOC (Table of Contents), LOT (List of Tables), LOF (List of Figures) after \maketitle
@@ -48,3 +48,11 @@ trans_gray: 0.2
 # "" or "normal" = body text size; options: footnotesize, small, normalsize, large
 # "" 或 "normal" = 正文字号；可选: footnotesize, small, normalsize, large
 trans_fontsize: "normalsize"
+
+# CJK fonts per engine / 各编译引擎的 CJK 字体
+# xelatex/lualatex: system font name (e.g. "PingFang SC", "Noto Serif CJK SC", "STSong")
+# pdflatex: CJKutf8 font name (e.g. gbsn=宋体, gkai=楷体, bsmi=繁体宋, bkai=繁体楷)
+fonts:
+  xelatex: "PingFang SC"
+  lualatex: "PingFang SC"
+  pdflatex: "gkai"

@@ -662,7 +662,8 @@ def assemble_translated_file(
                 if translated:
                     escaped = escape_for_latex(translated)
                     restored = restore_refs(escaped, part.refs_map)
-                    final_parts.append(r"\\\trans{" + restored + "}")
+                    # final_parts.append(r"\\\trans{" + restored + "}")
+                    final_parts.append(r"\par\trans{" + restored + "}")
         else:
             final_parts.append(part)
 

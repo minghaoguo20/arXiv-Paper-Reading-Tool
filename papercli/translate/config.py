@@ -12,6 +12,18 @@ from papercli.translate.processor import process_paper
 
 
 @dataclass
+class FontConfig:
+    """CJK font settings per LaTeX engine."""
+
+    # Font for XeLaTeX (system font name, passed to \setCJKmainfont)
+    xelatex: str = "PingFang SC"
+    # Font for LuaLaTeX (system font name, passed to \setmainjfont)
+    lualatex: str = "PingFang SC"
+    # Font for pdfLaTeX (CJKutf8 font name, e.g. gbsn/gkai/bsmi/bkai)
+    pdflatex: str = "gbsn"
+
+
+@dataclass
 class TranslateConfig:
     """LaTeX paper translator configuration."""
 
@@ -25,7 +37,7 @@ class TranslateConfig:
     max_workers: int = 30
     # Continue from previous translation (reuse cached translations)
     resume: bool = True
-    # LaTeX engine: xelatex or pdflatex (default: auto-detect from document)
+    # LaTeX engine: xelatex, pdflatex, or lualatex (empty = auto-detect from document)
     engine: str = ""
     # Add Table of Contents, List of Tables, List of Figures after \maketitle
     toc: bool = False
@@ -34,6 +46,8 @@ class TranslateConfig:
     # Font size for translated text: "" or "normal" for body size, or any LaTeX size command
     # e.g. "small", "footnotesize", "large"
     trans_fontsize: str = ""
+    # CJK font per engine
+    fonts: FontConfig = field(default_factory=FontConfig)
     # CLI-only override for trans_gray (highest priority); -1 means not set
     grey: float = -1.0
 
@@ -74,7 +88,7 @@ LaTeX Paper Translator - Common Commands:
   python run.py translate --input 2307.16789 --target_lang Japanese
   python run.py translate --input 2307.16789 --resume true
   python run.py translate --input 2307.16789 --max_workers 20
-  python run.py translate --input 2307.16789 --engine xelatex
+  python run.py translate --input 2307.16789 --engine xelatex     (or pdflatex, lualatex)
   python run.py translate --input 2307.16789 --toc true
   python run.py translate --input 2307.16789 --grey 0.2
 

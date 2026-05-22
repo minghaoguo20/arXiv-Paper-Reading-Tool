@@ -153,3 +153,6 @@ latexmk -pdf -bibtex -f -interaction=nonstopmode -file-line-error main.tex
 
 **翻译会修改原始文件吗？**
 不会。原始文件保留在 `tex/{id}/`，所有修改都在 `tex/{id}_bilingual/` 中进行。
+
+**翻译内容是否放在了新的段落？**
+在 [papercli/translate/latex/parser.py](papercli/translate/latex/parser.py) 中修改。`final_parts.append(r"\par\trans{" + restored + "}")` 为新的段落，`final_parts.append(r"\\\trans{" + restored + "}")` 为同一个段落但是换行。

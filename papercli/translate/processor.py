@@ -366,6 +366,7 @@ def _process_with_engine(
 
         print(f"Adding CJK support to {main_tex.name} ({engine.value})...")
         main_content = main_tex.read_text(encoding="utf-8")
+        fonts = cfg.fonts if cfg else None
         main_content = add_cjk_support(
             main_content,
             engine=engine,
@@ -374,6 +375,9 @@ def _process_with_engine(
             category=metadata.get("category") if metadata else None,
             trans_gray=cfg.trans_gray if cfg else 0.4,
             trans_fontsize=cfg.trans_fontsize if cfg else "",
+            font_xelatex=fonts.xelatex if fonts else "PingFang SC",
+            font_lualatex=fonts.lualatex if fonts else "PingFang SC",
+            font_pdflatex=fonts.pdflatex if fonts else "gbsn",
         )
         main_tex.write_text(main_content, encoding="utf-8")
 
