@@ -95,7 +95,7 @@ def find_included_files(tex_file: Path, base_dir: Path, visited: set) -> list[Pa
                 ref = match.group(1).strip()
                 if any(
                     skip in ref.lower()
-                    for skip in ["table", "bib", "sty", "cls", "bbl", "fig"]
+                    for skip in ["bib", "sty", "cls", "bbl"]
                 ):
                     continue
                 if not ref.endswith(".tex"):
