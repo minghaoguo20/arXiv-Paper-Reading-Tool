@@ -40,10 +40,13 @@ def get_config() -> "TranslateConfig | None":
     return TranslateConfig._instance
 
 
-def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -> str:
-    """Translate text using OpenAI-compatible API with retry."""
+def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -> tuple[str, bool]:
+    """Translate text using OpenAI-compatible API with retry.
+
+    Returns (translation, is_valid) where is_valid indicates placeholders are preserved.
+    """
     if not text.strip():
-        return ""
+        return "", True
 
     cfg = get_config()
 
@@ -56,7 +59,7 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
         clean = re.sub(r"\s+", " ", clean).strip()
         words = clean.split()[:15]
         truncated = " ".join(words)
-        return f"（测试翻译）{truncated}……"
+        return f"（测试翻译）{truncated}……", True
 
     model_name = cfg.model if cfg else "gpt-4.1-nano"
 
@@ -112,23 +115,59 @@ def translate(text: str, target_lang: str | None = None, max_retries: int = 3) -
                 translation = result["choices"][0]["message"]["content"]
                 output_placeholders = set(re.findall(r"\[[A-Z]+_\d+\]", translation))
                 if input_placeholders == output_placeholders:
-                    return translation
+                    return translation, True
                 last_result = translation
                 if attempt < max_retries - 1:
                     continue
-                return translation
+                return last_result, False
             elif "error" in result:
                 print(f"API error: {result['error']}")
                 if attempt < max_retries - 1:
                     time.sleep(2**attempt)
                     continue
-            return text
+            return text, False
         except Exception:
             if attempt < max_retries - 1:
                 time.sleep(2**attempt)
                 continue
-            return text
-    return text
+            return text, False
+    return last_result, False
+
+
+def _check_placeholders(clean_text: str, translation: str) -> bool:
+    """Return True if translation preserves exactly the same placeholders as source."""
+    expected = set(re.findall(r"\[[A-Z]+_\d+\]", clean_text))
+    actual = set(re.findall(r"\[[A-Z]+_\d+\]", translation))
+    return expected == actual
+
+
+def _run_translation_batch(
+    pending: list[tuple[TranslationTask, str]],
+    results: dict[int, str],
+    output_dir: Path | None,
+    max_workers: int,
+    desc: str = "Translating",
+) -> list[tuple[TranslationTask, str]]:
+    """Translate a batch concurrently. Returns list of (task, hash) that failed validation."""
+    failed: list[tuple[TranslationTask, str]] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(translate, t.clean_text): (t, h) for t, h in pending
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc=desc):
+            task, h = futures[future]
+            try:
+                translation, is_valid = future.result()
+                results[task.task_id] = translation
+                if is_valid:
+                    if output_dir and translation:
+                        save_cached_translation(output_dir, h, translation)
+                else:
+                    failed.append((task, h))
+            except Exception as e:
+                print(f"  Translation failed: {e}")
+                results[task.task_id] = ""
+    return failed
 
 
 def batch_translate(
@@ -139,25 +178,35 @@ def batch_translate(
     """Translate multiple paragraphs concurrently with caching support.
 
     Returns dict mapping task_id -> translated text.
+    Invalid cached translations (placeholder mismatch) are re-translated.
+    After all work, prompts the user to retry or quit if any tasks still fail.
     """
     if not tasks:
         return {}
 
     cfg = get_config()
-    results = {}
-    pending_tasks = []
+    results: dict[int, str] = {}
+    pending_tasks: list[tuple[TranslationTask, str]] = []
 
     if output_dir:
+        cache_invalid = 0
         for task in tasks:
             h = get_paragraph_hash(task.clean_text)
             cached = get_cached_translation(output_dir, h)
             if cached is not None:
-                results[task.task_id] = cached
+                if _check_placeholders(task.clean_text, cached):
+                    results[task.task_id] = cached
+                else:
+                    cache_invalid += 1
+                    pending_tasks.append((task, h))
             else:
                 pending_tasks.append((task, h))
 
-        if results:
-            print(f"  Cached: {len(results)}, Pending: {len(pending_tasks)}")
+        if results or cache_invalid:
+            print(
+                f"  Cached: {len(results)}, Pending: {len(pending_tasks)}"
+                + (f" (re-translating {cache_invalid} invalid cache entries)" if cache_invalid else "")
+            )
     else:
         pending_tasks = [(t, get_paragraph_hash(t.clean_text)) for t in tasks]
 
@@ -166,25 +215,39 @@ def batch_translate(
 
     if cfg and cfg.debug_mode:
         for task, h in tqdm(pending_tasks, desc="Translating (debug)"):
-            translation = translate(task.clean_text)
+            translation, is_valid = translate(task.clean_text)
             results[task.task_id] = translation
-            if output_dir and translation:
+            if output_dir and translation and is_valid:
                 save_cached_translation(output_dir, h, translation)
         return results
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(translate, t.clean_text): (t, h) for t, h in pending_tasks
-        }
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Translating"):
-            task, h = futures[future]
-            try:
-                translation = future.result()
-                results[task.task_id] = translation
-                if output_dir and translation:
-                    save_cached_translation(output_dir, h, translation)
-            except Exception as e:
-                print(f"  Translation failed: {e}")
-                results[task.task_id] = ""
+    failed = _run_translation_batch(pending_tasks, results, output_dir, max_workers)
+
+    while failed:
+        print(f"\n\033[1;31m[Warning] {len(failed)} translation(s) still have placeholder mismatches after retries:\033[0m")
+        for task, _ in failed:
+            expected = set(re.findall(r"\[[A-Z]+_\d+\]", task.clean_text))
+            actual = set(re.findall(r"\[[A-Z]+_\d+\]", results.get(task.task_id, "")))
+            missing = expected - actual
+            extra = actual - expected
+            preview = task.clean_text[:100].replace("\n", " ")
+            parts = []
+            if missing:
+                parts.append(f"missing={missing}")
+            if extra:
+                parts.append(f"extra={extra}")
+            print(f"  Task {task.task_id} ({', '.join(parts)}): {preview}…")
+
+        try:
+            choice = input("\n[r] Retry failed translations  [q] Quit: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise SystemExit(1)
+
+        if choice == "q":
+            raise SystemExit(1)
+        elif choice == "r":
+            failed = _run_translation_batch(failed, results, output_dir, max_workers, desc="Retrying")
+        # any other input: re-prompt
 
     return results
