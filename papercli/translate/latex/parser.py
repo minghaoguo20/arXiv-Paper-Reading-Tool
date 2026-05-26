@@ -238,8 +238,8 @@ def escape_for_latex(text: str) -> str:
 
 
 def extract_caption_content(text: str) -> str:
-    """Extract content from \\caption{...} handling nested braces."""
-    match = re.search(r"\\caption\{", text)
+    """Extract content from \\caption{...} or \\captionof{type}{...} handling nested braces."""
+    match = re.search(r"\\captionof\{[^}]+\}\{|\\caption\{", text)
     if not match:
         return ""
     start = match.end()
@@ -255,8 +255,8 @@ def extract_caption_content(text: str) -> str:
 
 
 def is_caption_complete(text: str) -> bool:
-    """Check if a caption starting with \\caption{ has balanced braces."""
-    match = re.search(r"\\caption\{", text)
+    """Check if a caption (\\caption{ or \\captionof{type}{) has balanced braces."""
+    match = re.search(r"\\captionof\{[^}]+\}\{|\\caption\{", text)
     if not match:
         return True
     start = match.end()
@@ -531,7 +531,7 @@ def parse_file_for_translation(
                     caption_accumulator = []
                 continue
 
-            if in_caption_env() and "\\caption{" in line:
+            if (in_caption_env() and "\\caption{" in line) or "\\captionof{" in line:
                 if is_caption_complete(line):
                     caption_content = extract_caption_content(line)
                     if caption_content and len(caption_content) >= 10:
@@ -640,7 +640,7 @@ def assemble_translated_file(
 
                     combined = "\n".join(orig_lines)
 
-                    match = re.search(r"\\caption\{", combined)
+                    match = re.search(r"\\captionof\{[^}]+\}\{|\\caption\{", combined)
                     if match:
                         start = match.end()
                         depth = 1

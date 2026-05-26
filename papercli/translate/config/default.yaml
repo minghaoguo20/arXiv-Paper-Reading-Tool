@@ -11,7 +11,8 @@
 # Translation model / 翻译模型
 # Options: gpt-4o-mini, gpt-5-nano, gpt-4.1-nano, or "x"/"debug"/"none" for testing without API
 # 可选项: gpt-4o-mini, gpt-5-nano, 或使用 "x"/"debug"/"none" 进行无 API 测试
-model: gpt-4.1-nano
+# wukong: gpt-5.4-mini
+model: gpt-5.4-mini
 
 # Target language / 目标语言
 # Options: Chinese, Japanese, Korean, German, French, Spanish, etc.
