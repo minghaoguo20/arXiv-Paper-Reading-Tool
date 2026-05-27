@@ -24,6 +24,7 @@ from papercli.translate.latex import (
     get_compile_command,
     install_packages,
     parse_file_for_translation,
+    parse_missing_bst_files,
     parse_missing_fonts,
     parse_missing_packages,
 )
@@ -171,6 +172,19 @@ def _compile_with_engine(
             result = _run_latex(compile_cmd, compile_dir, timeout=300)
             pdf_path = compile_dir / (main_tex.stem + ".pdf")
             xdv_path = compile_dir / (main_tex.stem + ".xdv")
+
+            # Check for missing BibTeX style files even when PDF was generated.
+            # BibTeX errors only appear in .blg, not in latexmk stdout, so
+            # latexmk may produce a PDF while all citations remain undefined.
+            blg_path = compile_dir / (main_tex.stem + ".blg")
+            missing_bst = parse_missing_bst_files(blg_path)
+            new_bst = [pkg for pkg in missing_bst if pkg not in installed_packages]
+            if new_bst and attempt < max_attempts - 1:
+                print(f"  Missing BibTeX style packages: {', '.join(new_bst)}, installing...")
+                if install_packages(new_bst):
+                    installed_packages.update(new_bst)
+                    print(f"  Retrying compilation (attempt {attempt + 2})...")
+                    continue
 
             if pdf_path.exists() and pdf_path.stat().st_size > 0:
                 if result.returncode == 0:

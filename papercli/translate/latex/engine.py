@@ -323,6 +323,29 @@ def parse_missing_packages(output: str) -> list[str]:
     return list(missing)
 
 
+def parse_missing_bst_files(blg_path: Path) -> list[str]:
+    """
+    Parse BibTeX log (.blg) for missing .bst style files.
+
+    BibTeX errors like "I couldn't open style file IEEEtran.bst" only appear
+    in the .blg file, not in latexmk stdout, so latexmk may still produce a
+    PDF while all citations remain undefined.
+
+    Args:
+        blg_path: Path to the .blg file.
+
+    Returns:
+        List of missing BibTeX style package names (e.g., ['IEEEtran']).
+    """
+    if not blg_path.exists():
+        return []
+    content = blg_path.read_text(errors="replace")
+    missing = set()
+    for match in re.finditer(r"I couldn't open style file (\S+?)\.bst", content):
+        missing.add(match.group(1))
+    return list(missing)
+
+
 def _font_to_package(font_name: str) -> str | None:
     """
     Map a font file name to the package that provides it.

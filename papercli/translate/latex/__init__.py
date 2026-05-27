@@ -7,6 +7,7 @@ from papercli.translate.latex.engine import (
     detect_engine,
     get_compile_command,
     install_packages,
+    parse_missing_bst_files,
     parse_missing_fonts,
     parse_missing_packages,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "detect_engine",
     "get_compile_command",
     "install_packages",
+    "parse_missing_bst_files",
     "parse_missing_fonts",
     "parse_missing_packages",
     "FileParseResult",
